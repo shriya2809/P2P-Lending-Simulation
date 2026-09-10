@@ -1166,9 +1166,15 @@ function gcd(a, b) { return b === 0 ? Math.abs(a) : gcd(b, a % b); }
 // score-changing amount in the config. With the defaults (+5, -10, +5)
 // that comes out as 5.
 function scoreGranularity() {
-  const g = [CONFIG.onTimeReward, CONFIG.defaultPenaltyAtOrBelow100,
-             CONFIG.aboveCeilingRewardPerYear]
-    .filter(n => Number.isFinite(n) && n > 0)
+  // Every value a score can actually be SET to (not just stepped by) has to
+  // be on this grid, or the histogram's "one bar = one exact score" labelling
+  // goes wrong. That's the step sizes (reward/penalty amounts) AND the
+  // absolute targets a score gets clamped or dropped to.
+  const g = [CONFIG.startingScore, CONFIG.onTimeReward, CONFIG.defaultPenaltyAtOrBelow100,
+             CONFIG.aboveCeilingRewardPerYear, CONFIG.scoreCeiling, CONFIG.scoreCap,
+             CONFIG.defaultPenaltyDropToAbove100]
+    .filter(n => Number.isFinite(n) && n !== 0)
+    .map(Math.abs)
     .reduce((a, b) => gcd(a, b), 0);
   return g > 0 ? g : 1;
 }
