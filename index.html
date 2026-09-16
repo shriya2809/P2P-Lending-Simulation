@@ -333,7 +333,15 @@ tbody tr:nth-child(even){background:#F7F9FA}
           </div>
         </div>
         <div id="person-summary" style="margin-top:18px"></div>
+        <!-- NEW: weekly surplus / deficit drawn in stage 1 -->
+<h3 style="margin-top:26px">Weekly Surplus / Deficit</h3>
+        <div class="chartbox" style="height:320px"><canvas id="c-person-surplus"></canvas></div>
+        <!-- NEW: pillow bank going into the marketplace, before borrowing / lending -->
+        <h3 style="margin-top:26px">Pillow Bank at Beginning of Week (before borrowing/lending)</h3>
+        <div class="chartbox" style="height:320px"><canvas id="c-person-pre"></canvas></div>
+        <h3 style="margin-top:26px">Pillow Bank at End of Week</h3>
         <div class="chartbox" style="height:320px"><canvas id="c-person"></canvas></div>
+        <h3 style="margin-top:26px">Credit Rating</h3>
         <div class="chartbox" style="height:320px"><canvas id="c-person-cr"></canvas></div>
         <h3 style="margin-top:26px">Event log</h3>
         <div class="tablescroll" style="max-height:400px"><table id="t-person-log"></table></div>
@@ -385,8 +393,11 @@ tbody tr:nth-child(even){background:#F7F9FA}
    THE WEEK, IN ORDER (see stepWeek)
      1  everyone draws a random surplus or deficit
      2  this week's instalments are worked out and frozen
-     3  anyone below -1000 borrows; anyone above +1000 has money to lend
-     4  instalments are paid or missed; arrears swept; spare cash applied
+     2b everyone not forced to borrow pays instalments and arrears first
+     3  anyone at or below -1000 borrows enough to cover this week's
+        instalments; anyone above +1000 with nothing owing can lend
+     4  the borrowers pay; anything still unpaid once all the week's money
+        has moved becomes arrears; spare cash applied
      5  default status set, and the rating charged for arrears still owing
      6  the week's figures recorded for the charts
 
@@ -488,11 +499,21 @@ const CATFIELDS = [
 
 /* ================= helpers ================= */
 /* ---------- small utilities ---------- */
-/* Seeded random number generator. Seeded, not Math.random(), so that
-   the same seed replays the same run exactly - which is what makes
-   "reset to week 0" reproduce a run and what lets repetitions be
-   averaged meaningfully. */
-function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+/* CHANGED: unseeded random number generator. Every number comes from the
+   browser's cryptographic generator (crypto.getRandomValues), which is fed
+   by the operating system's entropy pool - there is no seed, so no run can
+   be replayed and "Reset to week 0" builds a brand-new random world.
+   Values are drawn in batches for speed and combined into 53-bit floats in
+   [0,1), the full precision of a JavaScript number. */
+function trueRandom(){
+  const buf = new Uint32Array(4096);
+  let i = buf.length;
+  return function(){
+    if(i >= buf.length){ crypto.getRandomValues(buf); i = 0; }
+    const hi = buf[i++] >>> 5, lo = buf[i++] >>> 6;
+    return (hi*67108864 + lo) / 9007199254740992;
+  };
+}
 function ri(rng,lo,hi){return Math.round(lo+rng()*(hi-lo));}
 function shuffle(a,rng){for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));const t=a[i];a[i]=a[j];a[j]=t;}return a;}
 function nearestTenure(pref,list){let best=list[0];for(const t of list){const d=Math.abs(t-pref),b=Math.abs(best-pref);if(d<b||(d===b&&t<best))best=t;}return best;}
@@ -619,7 +640,7 @@ const ACC=['made','madeValue','blocked','unfunded','unfundedValue','cumPaid','cu
    skip per-person history to keep memory down, which is why the
    Individuals page always shows repetition one. */
 function createRun(C, seed, keepDetail){
-  const S = { C, rng:mulberry32(seed>>>0), people:[], idx:{}, allLoans:[], weekly:[],
+  const S = { C, rng:trueRandom(), people:[], idx:{}, allLoans:[], weekly:[],
               cumPaid:0, cumEarned:0, loanSeq:0, week:0, keepDetail,
               cats: CATS.slice() };
   let pid=0;
@@ -634,9 +655,11 @@ function createRun(C, seed, keepDetail){
         riskTaker: sp.riskTaker, prefTenure: sp.prefTenure,
         pb:0, cr:C.crStart, biasOn:false, inDefault:false,
         loans:[], given:[], interestPaid:0, interestEarned:0,
-        loansTaken:0, loansGiven:0, borrowed:0, lent:0, onTimeThisWeek:0, owedAtStart:0,
+        loansTaken:0, loansGiven:0, borrowed:0, lent:0, onTimeThisWeek:0, recoveredThisWeek:0, owedAtStart:0,
         paid:0, missed:0, weeksBehind:0, refused:0,
-        pbSeries:[], crSeries:[], ipSeries:[], ieSeries:[], defSeries:[], lockSeries:[], log:[]
+        weekSurplus:0, prePb:0,
+        pbSeries:[], crSeries:[], ipSeries:[], ieSeries:[], defSeries:[], lockSeries:[], log:[],
+        surplusSeries:[], prePbSeries:[]
       };
       S.people.push(p); S.idx[pid]=p; pid++;
     }
@@ -722,7 +745,10 @@ function stepWeek(S){
     const cc=C.cat[p.cat];
     if(cc.bias>0 && p.cr<cc.biasCR && p.inDefault) p.biasOn=true;
     const b = p.biasOn?cc.bias:0;
-    p.pb += ri(rng, cc.min+b, cc.max+b);
+    const drawn = ri(rng, cc.min+b, cc.max+b);
+    p.pb += drawn;
+    /* NEW: remembered for the Individuals page - the amount drawn this week */
+    p.weekSurplus = drawn;
   }
 
   /* ---- STAGE 2: WHAT FALLS DUE THIS WEEK --------------------------
@@ -731,13 +757,14 @@ function stepWeek(S){
      consequences worth knowing:
        - a loan taken out today is not billed today; its first
          instalment falls due next week
-       - money borrowed in stage 3 can be used to pay these instalments
-         in stage 4, which is the order the specification requires
+       - lenders pay these instalments in stage 2b, BEFORE they can lend
+       - borrowers borrow in stage 3 and pay in stage 4, so borrowed
+         money can go towards their instalments
      `lendable` then works out how much a would-be lender can safely
-     part with: their balance, down to their own borrow threshold, less
-     what they themselves owe this week and any arrears, rounded down to
-     a whole loan size. That is why a lender can never lend themselves
-     into needing to borrow.
+     part with: their balance down to zero (CHANGED: previously down to the
+     -1000 borrow threshold), less any instalments not yet paid this week
+     and any arrears, rounded down to a whole loan size. That is why a
+     lender can never lend themselves into the negative.
      ------------------------------------------------------------------ */
   const dues=new Map();
   for(const L of allLoans){
@@ -750,9 +777,206 @@ function stepWeek(S){
   const step = C.amounts[0];
   const lendable = l => {
     if(l.pb <= C.lendAbove) return 0;
-    const free = l.pb - C.borrowBelow - dueTotal(l.id) - arrearsOf(l);
+    /* CHANGED: no lending until this week's instalments are settled (stage 2b) */
+    if(!repaid.has(l.id)) return 0;
+    /* CHANGED: nor while any of their own instalments this week is still unpaid */
+    if(dues.has(l.id)) return 0;
+    /* CHANGED: nobody lends while they have uncleared arrears of their own */
+    if(arrearsOf(l) > 0.5) return 0;
+    /* CHANGED: a lender can never go below zero by lending */
+    const free = l.pb - dueTotal(l.id) - arrearsOf(l);
     return free<=0 ? 0 : Math.floor(free/step)*step;
   };
+
+  /* ---- STAGE 2b: INSTALMENTS BEFORE THE MARKET (CHANGED) -----------
+     Nobody may lend before paying what they owe. So everyone who is NOT
+     being forced to borrow settles up first - this week's instalments,
+     then the arrears sweep, then any spare-cash prepayment - and only
+     what is left after that can be lent in stage 3.
+     People at or below the borrow threshold borrow first and pay in
+     stage 4, so borrowed money can go towards their instalments.
+
+     CHANGED - SETTLEMENT NO LONGER DEPENDS ON PROCESSING ORDER.
+     Payments are made in rounds. In each round everyone tries every
+     instalment they still owe this week; anyone who can afford one pays
+     it, and that money lands with the lender straight away. If anybody
+     paid anything, there is another round, because the money that just
+     moved may let someone who could not pay before pay now. Only when a
+     round passes with nobody able to pay anything more does the arrears
+     sweep get a turn (current instalments come before old arrears), and
+     if the sweep moves money the rounds start again. An instalment is
+     only recorded as missed at the very end of stage 4, once the whole
+     week's money has finished moving - including the money borrowers
+     pay in stage 4 - so being processed early can never cost anyone.
+
+     The pieces:
+       payDues(p)  this week's instalments - each paid in full if the pillow
+                   bank covers it and stays at or above zero; otherwise it
+                   stays pending for the next round
+       sweep(p)    the arrears sweep - only for groups that regularise
+                   (A, B, D). Clearing arrears is counted and credited
+                   once, together with on-time payments, in stage 5
+       settle(g)   the rounds described above, over a group of people
+       finalise(p) whatever is still pending at the end becomes arrears
+       prepay(p)   spare cash - off by default, once a week per person,
+                   only after all of that person's instalments are settled.
+                   A waterfall: overdue interest, then overdue principal,
+                   then the principal still standing. Paying principal
+                   early re-amortises the loan but earns no rating credit
+     ------------------------------------------------------------------ */
+  const payDues = p => {
+    const cc = C.cat[p.cat], list = dues.get(p.id);
+    if(!list) return false;
+    let any=false;
+    for(let i=0;i<list.length;){
+      const d=list[i], L=d.L, total=d.pDue+d.iDue;
+      /* all or nothing: a pillow bank of Rs900 against a Rs1000
+         instalment pays nothing this round.
+         'pay' groups settle regardless and let the balance go negative. */
+      if((p.pb-total) >= 0 || cc.shortfall==='pay'){
+        p.pb -= total; L.outstanding -= d.pDue;
+        const l = idx[L.lId]; l.pb += total; l.interestEarned += d.iDue;
+        p.interestPaid += d.iDue; S.cumPaid += d.iDue; S.cumEarned += d.iDue;
+        /* counted now, credited in stage 5 but only if the week ends square */
+        p.paid++; p.onTimeThisWeek++;
+        L.schedLeft--;
+        if(L.outstanding<=0.5 && L.arrI<=0.5){ L.outstanding=0; L.open=false; note(p,'Finished paying off a loan of '+rupees0(L.principal)+'.'); }
+        list.splice(i,1); any=true;
+      } else i++;
+    }
+    /* nothing left pending: no longer needs holding back from lending */
+    if(!list.length) dues.delete(p.id);
+    return any;
+  };
+
+  const sweep = p => {
+    const cc = C.cat[p.cat];
+    /* ---- THE ARREARS SWEEP -----------------------------------------
+       Only groups marked as regularising do this. It is the only route
+       out of default in the default configuration. C and E skip it
+       entirely, which is why their arrears never clear and their loans
+       never close. */
+    const clears = cc.regularise;
+    let any=false;
+    if(clears){
+      for(const L of p.loans){
+        if(!L.open) continue;
+        const owed = L.arrP+L.arrI;
+        if(owed<=0.5) continue;
+        if(p.pb-owed >= 0 || cc.shortfall==='pay'){
+          p.pb -= owed; L.outstanding -= L.arrP;
+          const l = idx[L.lId]; l.pb += owed; l.interestEarned += L.arrI;
+          p.interestPaid += L.arrI; S.cumPaid += L.arrI; S.cumEarned += L.arrI;
+          const back = L.arrN; L.arrP=0; L.arrI=0; L.arrN=0;
+          /* CHANGED: counted, not credited - the single weekly rise is given in stage 5 */
+          p.recoveredThisWeek += back;
+          note(p,'Cleared '+rupees0(owed)+' of arrears, recovering '+back+' instalment'+(back===1?'':'s')+'.');
+          if(L.outstanding<=0.5){ L.outstanding=0; L.open=false; }
+          any=true;
+        }
+      }
+    }
+
+    return any;
+  };
+
+  const settle = group => {
+    for(;;){
+      let paid=true;
+      while(paid){ paid=false; for(const p of group) if(payDues(p)) paid=true; }
+      let swept=false;
+      for(const p of group) if(sweep(p)) swept=true;
+      if(!swept) break;
+    }
+  };
+
+  const finalise = p => {
+    const list = dues.get(p.id);
+    if(!list) return;
+    for(const d of list){
+      const L=d.L, total=d.pDue+d.iDue;
+      L.arrP += d.pDue; L.arrI += d.iDue; L.arrN++;
+      p.missed++;
+      note(p,'Missed an instalment of '+rupees0(total)+' \u2014 the pillow bank could not cover it, even after all of this week\u2019s payments had come in.');
+      /* the schedule advances whether or not it was paid, so a loan
+         can reach the end of its term still carrying arrears - it then
+         stays open, holding a loan slot, until someone clears it */
+      L.schedLeft--;
+    }
+    dues.delete(p.id);
+  };
+
+  const prepaid = new Set();
+  const prepay = p => {
+    if(prepaid.has(p.id) || dues.has(p.id)) return;
+    prepaid.add(p.id);
+    const cc = C.cat[p.cat];
+    /* Spare money, at the group's own rate. It goes to arrears first
+       (the week's missed instalment is already sitting there), overdue
+       interest ahead of overdue principal, and only then against the
+       principal still standing. Whatever the pillow bank can cover. */
+    if(rng()<cc.prepay){
+      const order = p.loans.filter(L=>L.open).sort((a,b)=>
+        ((b.arrP+b.arrI)-(a.arrP+a.arrI)) || (a.outstanding-b.outstanding));
+      for(const L of order){
+        if(p.pb<=0) break;
+        const l = idx[L.lId];
+
+        /* tier 1 - arrears */
+        const owed = L.arrP + L.arrI;
+        if(owed>0.5){
+          const pay  = Math.min(p.pb, owed);
+          const iBit = Math.min(pay, L.arrI);
+          const pBit = pay - iBit;
+          p.pb -= pay; l.pb += pay;
+          L.arrI -= iBit; L.arrP -= pBit; L.outstanding -= pBit;
+          l.interestEarned += iBit; p.interestPaid += iBit;
+          S.cumPaid += iBit; S.cumEarned += iBit;
+          /* instalments made good, never more than were lost */
+          const back = Math.floor(L.arrN * (pay/owed) + 1e-9);
+          L.arrN -= back;
+          /* CHANGED: counted, not credited - the single weekly rise is given in stage 5 */
+          p.recoveredThisWeek += back;
+          note(p,'Paid '+rupees0(pay)+' towards arrears, recovering '+back+' instalment'+(back===1?'':'s')+'.');
+        }
+
+        /* tier 2 - principal, only once that loan's arrears are square */
+        const live = Math.max(0, L.outstanding - L.arrP);
+        if(p.pb>0 && live>0.5 && (L.arrP+L.arrI)<=0.5){
+          const pay = Math.min(p.pb, live);
+          p.pb -= pay; l.pb += pay;
+          L.outstanding -= pay;
+          reschedule(L, C);
+          /* prepaying principal is not a rating event */
+          note(p, pay>=live-0.5
+            ? 'Settled a loan early, paying off '+rupees0(pay)+'.'
+            : 'Paid '+rupees0(pay)+' off the principal ahead of schedule.');
+        }
+
+        if(L.outstanding<=0.5 && L.arrI<=0.5){ L.outstanding=0; L.open=false; L.arrN=0; }
+      }
+    }
+  };
+
+  for(const p of people){ p.onTimeThisWeek = 0; p.recoveredThisWeek = 0; }
+  /* what each person owed BEFORE any of this week's money moved. Every
+     rating event for the week is measured against this, not against
+     whatever is left afterwards - the payment relates to the debt it
+     was paying down, so clearing a final loan is scored on the loan,
+     not on the zero that follows it. CHANGED: taken here, before the
+     marketplace, so a borrower's new loan is not counted in it. */
+  for(const p of people) p.owedAtStart = owedNow(p);
+  /* `repaid` = the people who pay before the market (everyone not being
+     forced to borrow). Only they can lend, and only once nothing is
+     pending for them. */
+  const repaid = new Set(people.filter(x=>x.pb > C.borrowBelow).map(x=>x.id));
+  const payFirst = shuffle(people.filter(x=>repaid.has(x.id)), rng);
+  settle(payFirst);
+  for(const p of payFirst) prepay(p);
+  /* NEW: remembered for the Individuals page - the pillow bank as it stands
+     going into the marketplace, after instalments are paid and before any
+     borrowing or lending */
+  for(const p of people) p.prePb = p.pb;
 
   /* ---- STAGE 3: THE MARKETPLACE -----------------------------------
      Everyone at or below -1000 must borrow, in random order. Each gets
@@ -776,21 +1000,25 @@ function stepWeek(S){
     const room = C.maxPrincipal - openLoans.reduce((s,L)=>s+L.outstanding,0);
     /* gate 3 - no headroom left under the total borrowing ceiling */
     if(room < C.amounts[0]){ blocked++; b.refused++; note(b,'Needed '+rupees0(need)+' but is already at the '+rupees0(C.maxPrincipal)+' borrowing ceiling.'); continue; }
-    /* any amount that leaves the pillow bank inside the band, and nothing
-       else enters into it: obligations due this week do not widen the choice */
-    let cands = C.amounts.filter(a=>a<=room &&
-                 (b.pb+a)>=C.borrowBelow && (b.pb+a)<=C.lendAbove);
-    /* only reachable on a shortfall deeper than the largest loan */
-    if(!cands.length) cands = C.amounts.filter(a=>a<=room);
-    if(!cands.length){ blocked++; b.refused++; continue; }
-
-    /* pick one of the qualifying sizes at random. At -1200 the choices
-       are Rs1000 (landing at -200) and Rs2000 (landing at +800); both
-       are equally likely. */
-    const wanted = cands[Math.floor(rng()*cands.length)];
+    /* CHANGED: WHICH LOAN SIZES TO TRY, AND IN WHAT ORDER.
+       covering  every size under the ceiling that leaves the pillow bank at
+                 or above this week's instalments, so they can be paid. With
+                 nothing due, any size that brings the balance to zero or
+                 above. These are tried first, in a random order - so the
+                 borrower ends up with a random pick from whichever covering
+                 sizes a lender can actually fund.
+       helping   the sizes that would not cover it but still help, tried
+                 only once every covering size has failed, from the largest
+                 (closest to what is needed) down to the smallest.
+       At -1200 with Rs500 due: Rs2000, 3000, 4000 and 5000 in a random
+       order, then Rs1000. */
+    const needNow  = dueTotal(b.id);
+    const covering = C.amounts.filter(a=>a<=room && (b.pb+a) >= needNow);
+    const helping  = C.amounts.filter(a=>a<=room && (b.pb+a) <  needNow).sort((x,y)=>y-x);
+    if(!covering.length && !helping.length){ blocked++; b.refused++; continue; }
+    const ladder = shuffle(covering.slice(), rng).concat(helping);
     const tenure = nearestTenure(b.prefTenure, C.tenures);
     const rate   = irFor(b.cr, C);
-    const ladder = cands.filter(a=>a<=wanted).sort((x,y)=>y-x);
 
     let placed=false;
     for(const amt of ladder){
@@ -827,122 +1055,17 @@ function stepWeek(S){
     if(!placed){ unfunded++; unfundedValue+=need; b.refused++; note(b,'Needed '+rupees0(need)+' but no lender had the money spare.'); }
   }
 
-  /* ---- STAGE 4: REPAYMENT -----------------------------------------
-     Three passes over each person, in this order:
-       (a) this week's instalments - paid in full if the pillow bank can
-           cover them and stay at or above zero, otherwise the whole
-           instalment moves to arrears and arrN counts one more missed
-       (b) the arrears sweep - only for groups that regularise (A, B, D).
-           Clearing arrears credits the rating once per instalment made
-           good, which is the ONLY way a rating ever goes up
-       (c) spare cash - off by default. When switched on it is a
-           waterfall: overdue interest, then overdue principal, then the
-           principal still standing. Paying principal early re-amortises
-           the loan but earns no rating credit
+  /* ---- STAGE 4: REPAYMENT FOR BORROWERS (CHANGED) -------------------
+     The borrowers now pay, using whatever they were able to borrow. The
+     rounds run over EVERYONE, not just borrowers: anyone from stage 2b
+     who was still short gets another chance as borrowers' repayments
+     reach them, and regularisers can clear arrears with that money.
+     Only after the last round is anything still unpaid recorded as
+     missed. Then spare-cash prepayment for anyone who has not had it.
      ------------------------------------------------------------------ */
-  for(const p of shuffle(people.slice(), rng)){
-    const cc = C.cat[p.cat];
-    p.onTimeThisWeek = 0;
-    /* what this person owed BEFORE any of this week's money moved. Every
-       rating event for the week is measured against this, not against
-       whatever is left afterwards - the payment relates to the debt it
-       was paying down, so clearing a final loan is scored on the loan,
-       not on the zero that follows it. */
-    p.owedAtStart = owedNow(p);
-    const myDues = dues.get(p.id) || [];
-    for(const d of myDues){
-      const L=d.L, total=d.pDue+d.iDue;
-      /* all or nothing: a pillow bank of Rs900 against a Rs1000
-         instalment pays nothing and the whole thing goes to arrears.
-         'pay' groups settle regardless and let the balance go negative. */
-      const findsTheMoney = (p.pb-total) >= 0 || cc.shortfall==='pay';
-      if(findsTheMoney){
-        p.pb -= total; L.outstanding -= d.pDue;
-        const l = idx[L.lId]; l.pb += total; l.interestEarned += d.iDue;
-        p.interestPaid += d.iDue; S.cumPaid += d.iDue; S.cumEarned += d.iDue;
-        /* counted now, credited in stage 5 but only if the week ends square */
-        p.paid++; p.onTimeThisWeek++;
-      } else {
-        L.arrP += d.pDue; L.arrI += d.iDue; L.arrN++;
-        p.missed++;
-        note(p,'Missed an instalment of '+rupees0(total)+' \u2014 the pillow bank could not cover it.');
-      }
-      /* the schedule advances whether or not it was paid, so a loan
-         can reach the end of its term still carrying arrears - it then
-         stays open, holding a loan slot, until someone clears it */
-      L.schedLeft--;
-      if(L.outstanding<=0.5 && L.arrI<=0.5){ L.outstanding=0; L.open=false; note(p,'Finished paying off a loan of '+rupees0(L.principal)+'.'); }
-    }
-
-    /* ---- 4b: THE ARREARS SWEEP -------------------------------------
-       Only groups marked as regularising do this. It is the only route
-       out of default in the default configuration, and the only source
-       of upward rating movement anywhere in the model. C and E skip it
-       entirely, which is why their arrears never clear and their loans
-       never close. */
-    const clears = cc.regularise;
-    if(clears){
-      for(const L of p.loans){
-        if(!L.open) continue;
-        const owed = L.arrP+L.arrI;
-        if(owed<=0.5) continue;
-        if(p.pb-owed >= 0 || cc.shortfall==='pay'){
-          p.pb -= owed; L.outstanding -= L.arrP;
-          const l = idx[L.lId]; l.pb += owed; l.interestEarned += L.arrI;
-          p.interestPaid += L.arrI; S.cumPaid += L.arrI; S.cumEarned += L.arrI;
-          const back = L.arrN; L.arrP=0; L.arrI=0; L.arrN=0;
-          crMove(p,'up',C,back);
-          note(p,'Cleared '+rupees0(owed)+' of arrears, recovering '+back+' instalment'+(back===1?'':'s')+'.');
-          if(L.outstanding<=0.5){ L.outstanding=0; L.open=false; }
-        }
-      }
-    }
-
-    /* Spare money, at the group's own rate. It goes to arrears first
-       (the week's missed instalment is already sitting there), overdue
-       interest ahead of overdue principal, and only then against the
-       principal still standing. Whatever the pillow bank can cover. */
-    if(rng()<cc.prepay){
-      const order = p.loans.filter(L=>L.open).sort((a,b)=>
-        ((b.arrP+b.arrI)-(a.arrP+a.arrI)) || (a.outstanding-b.outstanding));
-      for(const L of order){
-        if(p.pb<=0) break;
-        const l = idx[L.lId];
-
-        /* tier 1 - arrears */
-        const owed = L.arrP + L.arrI;
-        if(owed>0.5){
-          const pay  = Math.min(p.pb, owed);
-          const iBit = Math.min(pay, L.arrI);
-          const pBit = pay - iBit;
-          p.pb -= pay; l.pb += pay;
-          L.arrI -= iBit; L.arrP -= pBit; L.outstanding -= pBit;
-          l.interestEarned += iBit; p.interestPaid += iBit;
-          S.cumPaid += iBit; S.cumEarned += iBit;
-          /* rating recovers per instalment made good, never more than was lost */
-          const back = Math.floor(L.arrN * (pay/owed) + 1e-9);
-          L.arrN -= back;
-          crMove(p,'up',C,back);
-          note(p,'Paid '+rupees0(pay)+' towards arrears, recovering '+back+' instalment'+(back===1?'':'s')+'.');
-        }
-
-        /* tier 2 - principal, only once that loan's arrears are square */
-        const live = Math.max(0, L.outstanding - L.arrP);
-        if(p.pb>0 && live>0.5 && (L.arrP+L.arrI)<=0.5){
-          const pay = Math.min(p.pb, live);
-          p.pb -= pay; l.pb += pay;
-          L.outstanding -= pay;
-          reschedule(L, C);
-          /* prepaying principal is not a rating event */
-          note(p, pay>=live-0.5
-            ? 'Settled a loan early, paying off '+rupees0(pay)+'.'
-            : 'Paid '+rupees0(pay)+' off the principal ahead of schedule.');
-        }
-
-        if(L.outstanding<=0.5 && L.arrI<=0.5){ L.outstanding=0; L.open=false; L.arrN=0; }
-      }
-    }
-  }
+  settle(shuffle(people.slice(), rng));
+  for(const p of people) finalise(p);
+  for(const p of shuffle(people.slice(), rng)) prepay(p);
 
   /* ---- STAGE 5: STATUS AND THE WEEKLY RATING CHARGE ---------------
      Anyone with a single rupee overdue is in default. While they are,
@@ -951,9 +1074,12 @@ function stepWeek(S){
      long it stands, not just how often one happens: one instalment left
      owing for ten weeks costs ten charges, while ten instalments all
      cleared the same week cost one each.
-     Paying instalments on time raises the rating, but only in a week
-     that ends with nothing owing. While arrears stand, on-time payments
-     earn nothing and the only way up is to clear them, in stage 4b.
+     CHANGED: the rating rises ONCE for the week, and only in a week that
+     ends with nothing owing. Clearing arrears and paying this week's
+     instalment on time are the same event - getting square - so together
+     they earn one rise (+3 on the default once-a-week basis), not one
+     rise for the arrears and another for the week. While any arrears
+     still stand at the end of the week, nothing is credited.
      Coming out of default also switches the rescue bias back off.
      ------------------------------------------------------------------ */
   for(const p of people){
@@ -971,9 +1097,10 @@ function stepWeek(S){
          PER ACCOUNT: one arrear anywhere puts the whole account in
          default and nothing paid on time earns until it is cleared. */
       if(C.crScope==='loan'){
-        crMove(p,'up',C,p.onTimeThisWeek);
-        if(p.onTimeThisWeek) note(p,'Paid '+p.onTimeThisWeek+' instalment'+
-          (p.onTimeThisWeek===1?'':'s')+' on time \u2014 credited, each loan judged on its own.');
+        const good = p.onTimeThisWeek + p.recoveredThisWeek;
+        crMove(p,'up',C,good);
+        if(good) note(p,'Paid '+p.onTimeThisWeek+' on time and recovered '+p.recoveredThisWeek+
+          ' in arrears \u2014 credited, each loan judged on its own.');
       }
       note(p,n+' instalment'+(n===1?'':'s')+' still owing \u2014 rating charged again this week.');
     }
@@ -981,8 +1108,14 @@ function stepWeek(S){
       /* a week that ends with nothing owing: every instalment paid on
          time raises the rating. A week that ends in arrears earns
          nothing, however many instalments were paid during it. */
-      crMove(p,'up',C,p.onTimeThisWeek);
-      if(p.onTimeThisWeek) note(p,'Paid '+p.onTimeThisWeek+' instalment'+
+      /* CHANGED: one combined credit for on-time payments and arrears
+         cleared this week. On the once-a-week basis that is a single +3
+         however many instalments it covers. */
+      const good = p.onTimeThisWeek + p.recoveredThisWeek;
+      crMove(p,'up',C,good);
+      if(p.recoveredThisWeek) note(p,'All arrears cleared'+(p.onTimeThisWeek?' and this week\u2019s instalments paid':'')+
+        ' \u2014 nothing owing, rating rises.');
+      else if(p.onTimeThisWeek) note(p,'Paid '+p.onTimeThisWeek+' instalment'+
         (p.onTimeThisWeek===1?'':'s')+' on time with nothing owing \u2014 rating rises.');
       if(p.biasOn) note(p,'Back to a clean record; the extra earning effort stops.'); p.biasOn=false;
     }
@@ -1007,14 +1140,16 @@ function stepWeek(S){
     p.pbSeries.push(p.pb); p.crSeries.push(p.cr);
     p.ipSeries.push(p.interestPaid); p.ieSeries.push(p.interestEarned);
     p.defSeries.push(p.inDefault?1:0); p.lockSeries.push(p.cr<C.crNoLoan?1:0);
+    /* NEW */
+    p.surplusSeries.push(p.weekSurplus); p.prePbSeries.push(p.prePb);
   }
 }
 
 /* A session holds every repeat of the same settings, all on the same clock. */
 /* A session is every repetition of the same settings, all on one clock.
-   Repetition seeds are spaced apart so they are independent runs, and
-   advance() steps them together so the averaged series stay consistent
-   at whatever week the user happens to stop. */
+   Each repetition draws from its own unseeded random generator, so they
+   are independent runs, and advance() steps them together so the averaged
+   series stay consistent at whatever week the user happens to stop. */
 function newSession(C, seed){
   const base = seed || (Date.now()>>>0);
   const runs=[];
@@ -1342,6 +1477,37 @@ function draw(id, labels, datasets, yTitle, fmt, extraY, opts){
 const asRupees = v => rupees0(v);
 const asNumber = v => (Math.round(v*10)/10).toLocaleString('en-IN');
 
+/* NEW: one participant's weekly surplus or deficit as bars - green above
+   zero, red below - so good and bad weeks read at a glance. */
+function drawSurplus(id, labels, data){
+  const el=$(id); if(!el) return;
+  if(!haveChart){ el.parentElement.innerHTML=''; return; }
+  if(charts[id]) charts[id].destroy();
+  charts[id]=new Chart(el,{
+    type:'bar',
+    data:{labels, datasets:[{
+      label:'Weekly surplus / deficit', data,
+      backgroundColor:data.map(v=>v>=0?'#157F4B':'#A81F2D'),
+      borderWidth:0, barPercentage:1, categoryPercentage:.85
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{titleFont:{size:16}, bodyFont:{size:15}, padding:12,
+          callbacks:{ title:it=>'Week '+it[0].label,
+            label:it=>(it.parsed.y>=0?'Surplus: ':'Deficit: ')+rupees0(it.parsed.y) }}
+      },
+      scales:{
+        x:{ title:{display:true,text:'Week',font:{size:16,weight:'600'}}, ticks:{maxTicksLimit:13}, grid:{display:false} },
+        y:{ title:{display:true,text:'Weekly surplus / deficit',font:{size:16,weight:'600'}},
+            ticks:{callback:v=>rupees0(v)},
+            grid:{color:c=>c.tick.value===0?'#9FAEB8':'#EDF0F2', lineWidth:c=>c.tick.value===0?2:1} }
+      }
+    }
+  });
+}
+
 /* ---------- results ---------- */
 /* Redraws the whole results page from LAST (the current snapshot) and
    LASTC (the config it was run with). Called after every step. */
@@ -1643,19 +1809,45 @@ function drawPerson(id){
   const faint = f => peers.map(x=>({label:x.name, data:personSeries(x,f),
       borderColor:tint(COLOR[p.cat],.28), backgroundColor:tint(COLOR[p.cat],.28), borderWidth:1.2}));
 
+  /* NEW: weekly surplus / deficit */
+  drawSurplus('c-person-surplus', labels, p.surplusSeries);
+
+  /* NEW: pillow bank going into the marketplace, with the two thresholds
+     that decide whether this person must borrow or has cash to lend */
+  draw('c-person-pre', labels, faint('prePb').concat([
+    {label:p.name+' \u2014 beginning of week', data:p.prePbSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5},
+    {label:'Must borrow at or below', data:labels.map(()=>C.borrowBelow), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[6,4], borderWidth:2},
+    {label:'Must lend above', data:labels.map(()=>C.lendAbove), borderColor:'#157F4B', backgroundColor:'#157F4B', borderDash:[6,4], borderWidth:2}
+  ]), 'Pillow bank (\u20B9)', asRupees, null, {legend:false});
+
   draw('c-person', labels, faint('pb').concat([
-    {label:p.name+' pillow bank', data:p.pbSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5}
-  ]), 'Pillow bank', asRupees, null, {legend:false});
+    {label:p.name+' \u2014 end of week', data:p.pbSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5}
+  ]), 'Pillow bank (\u20B9)', asRupees, null, {legend:false});
 
   draw('c-person-cr', labels, faint('cr').concat([
     {label:p.name+' credit rating', data:p.crSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5},
     {label:'Exclusion threshold', data:labels.map(()=>C.crNoLoan), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[6,4], borderWidth:2}
   ]), 'Credit rating', asNumber, null, {legend:false});
 
-  $('t-person-log').innerHTML = p.log.length
-    ? '<thead><tr><th style="width:90px">Week</th><th>Event</th></tr></thead><tbody>'+
-      p.log.map(e=>'<tr><td>'+e.w+'</td><td style="text-align:left">'+e.txt+'</td></tr>').join('')+'</tbody>'
-    : '<tbody><tr><td style="text-align:left">No events recorded: this participant neither borrowed nor lent.</td></tr></tbody>';
+  /* CHANGED: the event log now closes every week with a highlighted line
+     showing how the credit rating moved, from the rating carried into the
+     week to the rating it ended on. Events for that week sit above it. */
+  const byWeek={};
+  p.log.forEach(e=>{ (byWeek[e.w]||(byWeek[e.w]=[])).push(e.txt); });
+  const rows=[];
+  if(!p.log.length) rows.push('<tr><td></td><td style="text-align:left">No borrowing or lending events: this participant neither borrowed nor lent.</td></tr>');
+  for(let w=1; w<=p.crSeries.length; w++){
+    (byWeek[w]||[]).forEach(txt=>rows.push('<tr><td>'+w+'</td><td style="text-align:left">'+txt+'</td></tr>'));
+    const before = w===1 ? C.crStart : p.crSeries[w-2];
+    const after  = p.crSeries[w-1];
+    const d = after - before;
+    const txt = Math.abs(d)<1e-9
+      ? 'Credit rating unchanged at '+asNumber(after)+'.'
+      : 'Credit rating '+asNumber(before)+' \u2192 '+asNumber(after)+' (<span style="color:'+(d>0?'var(--good)':'var(--bad)')+'">'+
+        (d>0?'+':'\u2212')+asNumber(Math.abs(d))+'</span>).';
+    rows.push('<tr style="background:var(--accent-soft)"><td>'+w+'</td><td style="text-align:left;font-weight:600">'+txt+'</td></tr>');
+  }
+  $('t-person-log').innerHTML = '<thead><tr><th style="width:90px">Week</th><th>Event</th></tr></thead><tbody>'+rows.join('')+'</tbody>';
 }
 /* ---------- status at the horizon ---------- */
 let statusSort={key:null, dir:1};
