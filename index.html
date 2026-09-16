@@ -466,7 +466,7 @@ const FORM = [
             ['loan','Per instalment \u2014 each loan judged on its own']],
       h:'Pay two instalments and miss one. Per instalment gives +3 +3 \u22126. Per account gives \u22126 only.'}
   ]},
-  { title:'Rating movement', table:'cr', note:'A missed instalment is charged again every week until it is cleared, so a default costs more the longer it stands. Basis decides what one event is worth: once a week whatever the count, once per instalment, or scaled by the amount outstanding. The rise is credited for paying on time and for clearing arrears; prepaying never moves it. Prepaying does not move the rating.' },
+  { title:'Rating movement', table:'cr', note:'A missed instalment is charged again every week until it is cleared, so a default costs more the longer it stands. Basis decides what one event is worth: once a week whatever the count, once per instalment, or scaled by the amount outstanding. The rise is credited for paying on time and for clearing arrears; prepaying never moves it.' },
   { title:'Interest', fields:[
     {k:'irBase', l:'Rate at the top rating (%)', t:'num', min:0, max:200, step:0.5, h:'What a rating of 100 pays. Every rating below pays more.'},
     {k:'irStep', l:'Rate rises by (%)', t:'num', min:0, max:50, step:0.5, h:'Added once for each band the rating has fallen.'},
