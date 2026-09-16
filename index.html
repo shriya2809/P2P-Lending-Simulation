@@ -998,15 +998,23 @@ function stepWeek(S){
   let made=0, madeValue=0, blocked=0, unfunded=0, unfundedValue=0;
   const borrowers = shuffle(people.filter(p=>p.pb <= C.borrowBelow), rng);
   for(const b of borrowers){
-    const need = C.borrowBelow - b.pb;
+    /* CHANGED: what the borrower actually needs - enough to pay this week's
+       instalments, i.e. from where they are up to the instalments due
+       (up to zero if nothing is due). Previously this was only the gap
+       back up to the -1000 threshold, a leftover from the old rule. */
+    const needNow = dueTotal(b.id);
+    const need = Math.max(0, needNow - b.pb);
+    const needTxt = rupees0(need) + (needNow > 0.5
+      ? ' ('+rupees0(-b.pb)+' to get back to zero plus '+rupees0(needNow)+' of instalments due this week)'
+      : ' to get back to zero');
     const openLoans = b.loans.filter(L=>L.open);
     /* gate 1 - rating too low to borrow at all */
-    if(b.cr < C.crNoLoan){ blocked++; b.refused++; note(b,'Needed '+rupees0(need)+' but the rating of '+b.cr.toFixed(0)+' is below '+C.crNoLoan+', so no borrowing allowed.'); continue; }
+    if(b.cr < C.crNoLoan){ blocked++; b.refused++; note(b,'Needed '+needTxt+' but the rating of '+b.cr.toFixed(0)+' is below '+C.crNoLoan+', so no borrowing allowed.'); continue; }
     /* gate 2 - already holding the most loans this rating allows */
-    if(openLoans.length >= maxLoansFor(b.cr,C)){ blocked++; b.refused++; note(b,'Needed '+rupees0(need)+' but already holds '+openLoans.length+' loans, the limit at a rating of '+b.cr.toFixed(0)+'.'); continue; }
+    if(openLoans.length >= maxLoansFor(b.cr,C)){ blocked++; b.refused++; note(b,'Needed '+needTxt+' but already holds '+openLoans.length+' loans, the limit at a rating of '+b.cr.toFixed(0)+'.'); continue; }
     const room = C.maxPrincipal - openLoans.reduce((s,L)=>s+L.outstanding,0);
     /* gate 3 - no headroom left under the total borrowing ceiling */
-    if(room < C.amounts[0]){ blocked++; b.refused++; note(b,'Needed '+rupees0(need)+' but is already at the '+rupees0(C.maxPrincipal)+' borrowing ceiling.'); continue; }
+    if(room < C.amounts[0]){ blocked++; b.refused++; note(b,'Needed '+needTxt+' but is already at the '+rupees0(C.maxPrincipal)+' borrowing ceiling.'); continue; }
     /* CHANGED: WHICH LOAN SIZES TO TRY, AND IN WHAT ORDER.
        covering  every size under the ceiling that leaves the pillow bank at
                  or above this week's instalments, so they can be paid. With
@@ -1019,7 +1027,6 @@ function stepWeek(S){
                  (closest to what is needed) down to the smallest.
        At -1200 with Rs500 due: Rs2000, 3000, 4000 and 5000 in a random
        order, then Rs1000. */
-    const needNow  = dueTotal(b.id);
     const covering = C.amounts.filter(a=>a<=room && (b.pb+a) >= needNow);
     const helping  = C.amounts.filter(a=>a<=room && (b.pb+a) <  needNow).sort((x,y)=>y-x);
     if(!covering.length && !helping.length){ blocked++; b.refused++; continue; }
@@ -1059,7 +1066,7 @@ function stepWeek(S){
       note(l,'Lent '+rupees0(amt)+' to '+b.name+' at '+rate.toFixed(1)+'%.');
       placed=true; break;
     }
-    if(!placed){ unfunded++; unfundedValue+=need; b.refused++; note(b,'Needed '+rupees0(need)+' but no lender had the money spare.'); }
+    if(!placed){ unfunded++; unfundedValue+=need; b.refused++; note(b,'Needed '+needTxt+' but no lender could fund any loan size, down to '+rupees0(C.amounts[0])+'.'); }
   }
 
   /* ---- STAGE 4: REPAYMENT FOR BORROWERS (CHANGED) -------------------
