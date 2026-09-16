@@ -427,9 +427,9 @@ const DEFAULTS = {
   maxLoans: 4, cr75: 75, maxLoansAt75: 3, cr65: 65, maxLoansAt65: 2, crNoLoan: 50,
 
   /* --- credit rating --- */
-  crStart: 100, crCap: 100, crFloor: -100, riskyBelow: 75,
-  crUpMode:'flat',   crUp: 3,   crUpPer: 1000,
-  crDownMode:'flat', crDown: 6, crDownPer: 1000,
+  crStart: 100, crCap: 100, crFloor: -100, riskyBelow: 75, crScope: 'person',
+  crUpMode:'week',   crUp: 3,   crUpPer: 1000,
+  crDownMode:'week', crDown: 6, crDownPer: 1000,
 
   /* --- interest --- */
   irBase: 20, irStep: 2, irBand: 5, irPeriod: 'year', irMode: 'reducing'
@@ -445,30 +445,34 @@ const TENURES = [4,8,12];
 
 const FORM = [
   { title:'Population', fields:[
-    {k:'perSubgroup', l:'Participants per archetype', t:'num', min:1, max:60, step:1},
-    {k:'runs', l:'Repetitions to average', t:'num', min:1, max:50, step:1}
+    {k:'perSubgroup', l:'Participants per archetype', t:'num', min:1, max:60, step:1, h:'5 gives 30 people per group, 150 in total.'},
+    {k:'runs', l:'Repetitions to average', t:'num', min:1, max:50, step:1, h:'Runs the same settings several times and averages. Use 20 before drawing conclusions.'}
   ]},
-  { title:'Group parameters', table:'cats' },
-  { title:'Rating bands and loan ceilings', table:'limits' },
+  { title:'Group parameters', table:'cats', note:'One row per behaviour group. Min and max bound the random amount each person earns or loses every week. Regularises means they clear arrears whenever the money is there. Bias is extra weekly earning that starts once they fall behind and their rating drops below the trigger, and stops when they are square again. On shortfall decides what happens when the pillow bank cannot cover an instalment.' },
+  { title:'Rating bands and loan ceilings', table:'limits', note:'How many loans a person may hold at once, by rating. This gates new borrowing only \u2014 loans already running are never called in, so someone whose rating slips keeps the loans they have and simply cannot take more.' },
   { title:'Pillow bank thresholds', fields:[
-    {k:'lendAbove', l:'Must lend above (\u20B9)', t:'num', min:0, max:1000000, step:100},
-    {k:'borrowBelow', l:'Must borrow below (\u20B9)', t:'num', min:-1000000, max:0, step:100}
+    {k:'lendAbove', l:'Must lend above (\u20B9)', t:'num', min:0, max:1000000, step:100, h:'Above this, the spare cash has to be lent out.'},
+    {k:'borrowBelow', l:'Must borrow below (\u20B9)', t:'num', min:-1000000, max:0, step:100, h:'At or below this, the person has to borrow.'}
   ]},
   { title:'Loans', fields:[
-    {k:'loanAmounts', l:'Loan sizes available (\u20B9)', t:'text'},
-    {k:'maxPrincipal', l:'Maximum total borrowing (\u20B9)', t:'num', min:1000, max:1000000, step:1000}
+    {k:'loanAmounts', l:'Loan sizes available (\u20B9)', t:'text', h:'Comma separated. A borrower takes whichever size lands them back between the two thresholds.'},
+    {k:'maxPrincipal', l:'Maximum total borrowing (\u20B9)', t:'num', min:1000, max:1000000, step:1000, h:'Across all open loans together, not per loan.'}
   ]},
   { title:'Credit rating', fields:[
-    {k:'crStart', l:'Opening rating', t:'num', min:0, max:1000, step:1},
-    {k:'riskyBelow', l:'Borrower counts as risky below', t:'num', min:-1000, max:100, step:1}
+    {k:'crStart', l:'Opening rating', t:'num', min:0, max:1000, step:1, h:'Everyone starts here. The only way back up is clearing arrears.'},
+    {k:'riskyBelow', l:'Borrower counts as risky below', t:'num', min:-1000, max:100, step:1, h:'Cautious lenders refuse anyone under this. Risk-takers lend regardless.'},
+    {k:'crScope', l:'Rating judged', t:'select',
+      opts:[['person','Per account \u2014 one arrear stops all credit'],
+            ['loan','Per instalment \u2014 each loan judged on its own']],
+      h:'Pay two instalments and miss one. Per instalment gives +3 +3 \u22126. Per account gives \u22126 only.'}
   ]},
-  { title:'Rating movement', table:'cr' },
+  { title:'Rating movement', table:'cr', note:'A missed instalment is charged again every week until it is cleared, so a default costs more the longer it stands. Basis decides what one event is worth: once a week whatever the count, once per instalment, or scaled by the amount outstanding. The rise is credited for paying on time and for clearing arrears; prepaying never moves it. Prepaying does not move the rating.' },
   { title:'Interest', fields:[
-    {k:'irBase', l:'Rate at the top rating (%)', t:'num', min:0, max:200, step:0.5},
-    {k:'irStep', l:'Rate rises by (%)', t:'num', min:0, max:50, step:0.5},
-    {k:'irBand', l:'\u2026 for every fall of this many rating points', t:'num', min:1, max:100, step:1},
-    {k:'irPeriod', l:'Quoted rate is', t:'select', opts:[['year','per year'],['month','per month'],['term','one charge for the whole loan']]},
-    {k:'irMode', l:'Interest charged on', t:'select', opts:[['reducing','balance outstanding'],['flat','original loan amount']]}
+    {k:'irBase', l:'Rate at the top rating (%)', t:'num', min:0, max:200, step:0.5, h:'What a rating of 100 pays. Every rating below pays more.'},
+    {k:'irStep', l:'Rate rises by (%)', t:'num', min:0, max:50, step:0.5, h:'Added once for each band the rating has fallen.'},
+    {k:'irBand', l:'\u2026 for every fall of this many rating points', t:'num', min:1, max:100, step:1, h:'Band width. At 5, a rating of 94 is two bands down and pays two steps more.'},
+    {k:'irPeriod', l:'Quoted rate is', t:'select', opts:[['year','per year'],['month','per month'],['term','one charge for the whole loan']], h:'Per year makes interest tiny on a loan of a few weeks. This changes results more than any other setting.'},
+    {k:'irMode', l:'Interest charged on', t:'select', opts:[['reducing','balance outstanding'],['flat','original loan amount']], h:'Balance outstanding shrinks as the loan is repaid, so interest falls week by week. Original amount does not.'}
   ]}
 ];
 
@@ -509,6 +513,7 @@ function structured(raw){
   if(!C.amounts.length) C.amounts=[1000];
   C.tenures = TENURES.slice();
   C.irMode = String(raw.irMode); C.irPeriod = String(raw.irPeriod);
+  C.crScope = String(raw.crScope);
   C.cat={};
   CATS.forEach(k=>{C.cat[k]={
     min:parseFloat(raw[k+'_min']), max:parseFloat(raw[k+'_max']),
@@ -569,12 +574,35 @@ function missesOf(p){let n=0;for(const L of p.loans) if(L.open) n+=L.arrN; retur
    in whole bands - Rs9,500 against a Rs1,000 band counts as 10 bands,
    not 9.5, because of the Math.ceil. Always clamped to the floor and
    ceiling so a rating cannot run away. */
-function crMove(p, dir, C){
+/* ONE RATING EVENT. `count` is how many instalments the event covers -
+   paid on time, still owing, or recovered. What that count is worth
+   depends on the basis:
+     week       one move, whatever the count. Three instalments paid on
+                time is the same +3 as one. Loan number is irrelevant.
+     instalment the count itself. Pay two and miss one and the week is
+                +3 +3 -6. Holding more loans moves the rating more.
+     amount     ignores the count and scales by what was owed at the
+                START of the week, in whole bands - Rs9,500 against a
+                Rs1,000 band counts as 10. Rs4,000 moves the same
+                whether it is one loan or four.
+   Always clamped to the floor and ceiling. */
+/* What the week's rating events are measured against: the debt carried
+   into the week. Falls back to the live figure only for callers outside
+   the weekly loop, such as the parameters preview. */
+function exposure(p){
+  return (p.owedAtStart!==undefined && p.owedAtStart>0) ? p.owedAtStart : owedNow(p);
+}
+function crMove(p, dir, C, count){
+  const n = (count===undefined) ? 1 : count;
+  if(n<=0) return;
   const pts  = dir==='up' ? C.crUp : -C.crDown;
   const mode = dir==='up' ? C.crUpMode : C.crDownMode;
   const per  = dir==='up' ? C.crUpPer  : C.crDownPer;
-  const d = (mode==='scaled' && per>0) ? pts*Math.ceil(owedNow(p)/per) : pts;
-  p.cr = Math.max(C.crFloor, Math.min(C.crCap, p.cr+d));
+  let units;
+  if(mode==='instalment')          units = n;
+  else if(mode==='amount' && per>0) units = Math.ceil(exposure(p)/per);
+  else                              units = 1;
+  p.cr = Math.max(C.crFloor, Math.min(C.crCap, p.cr + pts*units));
 }
 
 /* ================= the engine =================
@@ -606,7 +634,7 @@ function createRun(C, seed, keepDetail){
         riskTaker: sp.riskTaker, prefTenure: sp.prefTenure,
         pb:0, cr:C.crStart, biasOn:false, inDefault:false,
         loans:[], given:[], interestPaid:0, interestEarned:0,
-        loansTaken:0, loansGiven:0, borrowed:0, lent:0,
+        loansTaken:0, loansGiven:0, borrowed:0, lent:0, onTimeThisWeek:0, owedAtStart:0,
         paid:0, missed:0, weeksBehind:0, refused:0,
         pbSeries:[], crSeries:[], ipSeries:[], ieSeries:[], defSeries:[], lockSeries:[], log:[]
       };
@@ -814,6 +842,13 @@ function stepWeek(S){
      ------------------------------------------------------------------ */
   for(const p of shuffle(people.slice(), rng)){
     const cc = C.cat[p.cat];
+    p.onTimeThisWeek = 0;
+    /* what this person owed BEFORE any of this week's money moved. Every
+       rating event for the week is measured against this, not against
+       whatever is left afterwards - the payment relates to the debt it
+       was paying down, so clearing a final loan is scored on the loan,
+       not on the zero that follows it. */
+    p.owedAtStart = owedNow(p);
     const myDues = dues.get(p.id) || [];
     for(const d of myDues){
       const L=d.L, total=d.pDue+d.iDue;
@@ -825,8 +860,8 @@ function stepWeek(S){
         p.pb -= total; L.outstanding -= d.pDue;
         const l = idx[L.lId]; l.pb += total; l.interestEarned += d.iDue;
         p.interestPaid += d.iDue; S.cumPaid += d.iDue; S.cumEarned += d.iDue;
-        /* paying on time is not a rating event: the only way up is to regularise */
-        p.paid++;
+        /* counted now, credited in stage 5 but only if the week ends square */
+        p.paid++; p.onTimeThisWeek++;
       } else {
         L.arrP += d.pDue; L.arrI += d.iDue; L.arrN++;
         p.missed++;
@@ -856,7 +891,7 @@ function stepWeek(S){
           const l = idx[L.lId]; l.pb += owed; l.interestEarned += L.arrI;
           p.interestPaid += L.arrI; S.cumPaid += L.arrI; S.cumEarned += L.arrI;
           const back = L.arrN; L.arrP=0; L.arrI=0; L.arrN=0;
-          for(let i=0;i<back;i++) crMove(p,'up',C);
+          crMove(p,'up',C,back);
           note(p,'Cleared '+rupees0(owed)+' of arrears, recovering '+back+' instalment'+(back===1?'':'s')+'.');
           if(L.outstanding<=0.5){ L.outstanding=0; L.open=false; }
         }
@@ -887,7 +922,7 @@ function stepWeek(S){
           /* rating recovers per instalment made good, never more than was lost */
           const back = Math.floor(L.arrN * (pay/owed) + 1e-9);
           L.arrN -= back;
-          for(let i=0;i<back;i++) crMove(p,'up',C);
+          crMove(p,'up',C,back);
           note(p,'Paid '+rupees0(pay)+' towards arrears, recovering '+back+' instalment'+(back===1?'':'s')+'.');
         }
 
@@ -916,8 +951,9 @@ function stepWeek(S){
      long it stands, not just how often one happens: one instalment left
      owing for ten weeks costs ten charges, while ten instalments all
      cleared the same week cost one each.
-     Paying an instalment on time is NOT a rating event. The only way up
-     is regularising, in stage 4b.
+     Paying instalments on time raises the rating, but only in a week
+     that ends with nothing owing. While arrears stand, on-time payments
+     earn nothing and the only way up is to clear them, in stage 4b.
      Coming out of default also switches the rescue bias back off.
      ------------------------------------------------------------------ */
   for(const p of people){
@@ -927,11 +963,29 @@ function stepWeek(S){
       p.weeksBehind++;
       /* each instalment still owing costs again, every week, until regularised */
       const n = missesOf(p);
-      for(let i=0;i<n;i++) crMove(p,'down',C);
+      crMove(p,'down',C,n);
       if(!wasBehind) note(p,'Now behind on payments.');
+      /* PER INSTALMENT: every loan is judged on its own, so instalments
+         paid on time still earn while other loans sit in arrears. Pay two
+         and miss one and the week is +3 +3 -6.
+         PER ACCOUNT: one arrear anywhere puts the whole account in
+         default and nothing paid on time earns until it is cleared. */
+      if(C.crScope==='loan'){
+        crMove(p,'up',C,p.onTimeThisWeek);
+        if(p.onTimeThisWeek) note(p,'Paid '+p.onTimeThisWeek+' instalment'+
+          (p.onTimeThisWeek===1?'':'s')+' on time \u2014 credited, each loan judged on its own.');
+      }
       note(p,n+' instalment'+(n===1?'':'s')+' still owing \u2014 rating charged again this week.');
     }
-    else { if(p.biasOn) note(p,'Back to a clean record; the extra earning effort stops.'); p.biasOn=false; }
+    else {
+      /* a week that ends with nothing owing: every instalment paid on
+         time raises the rating. A week that ends in arrears earns
+         nothing, however many instalments were paid during it. */
+      crMove(p,'up',C,p.onTimeThisWeek);
+      if(p.onTimeThisWeek) note(p,'Paid '+p.onTimeThisWeek+' instalment'+
+        (p.onTimeThisWeek===1?'':'s')+' on time with nothing owing \u2014 rating rises.');
+      if(p.biasOn) note(p,'Back to a clean record; the extra earning effort stops.'); p.biasOn=false;
+    }
   }
 
   /* ---- STAGE 6: RECORD THE WEEK -----------------------------------
@@ -1163,7 +1217,9 @@ function crTable(note){
     const lab=document.createElement('td'); lab.textContent=r[0]+' \u2014 rating '+r[4];
     const m=document.createElement('td');
     m.appendChild(cellInput({k:r[1], t:'select', aria:r[0]+' basis',
-      opts:[['flat','Fixed, per instalment'],['scaled','Scaled by amount outstanding']]}));
+      opts:[['week','Once a week, whatever the count'],
+            ['instalment','Once per instalment'],
+            ['amount','By amount outstanding']]}));
     const pts=document.createElement('td'); pts.appendChild(cellInput({k:r[2], t:'num', min:0, max:100, step:0.5, aria:r[0]+' points'}));
     const per=document.createElement('td'); per.appendChild(cellInput({k:r[3], t:'num', min:1, max:1000000, step:100, aria:r[0]+' per rupees outstanding'}));
     tr.appendChild(lab); tr.appendChild(m); tr.appendChild(pts); tr.appendChild(per); tb.appendChild(tr);
@@ -1184,7 +1240,7 @@ function syncCrBasis(){
   [['crUpMode','crUpPer'],['crDownMode','crDownPer']].forEach(pair=>{
     const m=$('f_'+pair[0]), per=$('f_'+pair[1]);
     if(!m||!per) return;
-    const off = m.value!=='scaled';
+    const off = m.value!=='amount';
     per.disabled=off;
     per.style.visibility = off ? 'hidden' : 'visible';
   });
