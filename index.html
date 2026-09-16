@@ -446,7 +446,7 @@ const TENURES = [4,8,12];
 const FORM = [
   { title:'Population', fields:[
     {k:'perSubgroup', l:'Participants per archetype', t:'num', min:1, max:60, step:1, h:'5 gives 30 people per group, 150 in total.'},
-    {k:'runs', l:'Repetitions to average', t:'num', min:1, max:50, step:1, h:'Runs the same settings several times and averages. Use 20 before drawing conclusions.'}
+    {k:'runs', l:'Repetitions to average', t:'num', min:1, max:50, step:1, h:'Runs the same settings several times and averages.'}
   ]},
   { title:'Group parameters', table:'cats', note:'One row per behaviour group. Min and max bound the random amount each person earns or loses every week. Regularises means they clear arrears whenever the money is there. Bias is extra weekly earning that starts once they fall behind and their rating drops below the trigger, and stops when they are square again. On shortfall decides what happens when the pillow bank cannot cover an instalment.' },
   { title:'Rating bands and loan ceilings', table:'limits', note:'How many loans a person may hold at once, by rating. This gates new borrowing only \u2014 loans already running are never called in, so someone whose rating slips keeps the loans they have and simply cannot take more.' },
