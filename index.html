@@ -1,1856 +1,1747 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>P2P Lending — Default Behaviour Simulation</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peer-to-Peer Lending Simulation</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-  :root{
-    --bg:#0D1117;
-    --panel:#131A22;
-    --border:#212B36;
-    --text:#E7EAEE;
-    --text-dim:#8A93A3;
-    --gold:#D4A24C;
-    --teal:#46A697;
-    --rust:#C1503E;
-  }
-  *{box-sizing:border-box;}
-  body{
-    margin:0; background:var(--bg); color:var(--text);
-    font-family:'IBM Plex Sans',sans-serif; font-size:14px; line-height:1.5;
-  }
-  .mono{ font-family:'IBM Plex Mono',monospace; }
-  header{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:18px 28px; border-bottom:1px solid var(--border);
-    flex-wrap:wrap; gap:14px;
-  }
-  header h1{ font-size:18px; font-weight:600; margin:0; }
-  header .subtitle{ color:var(--text-dim); font-size:12.5px; margin-top:3px; }
-  .counter{
-    font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--gold);
-    border:1px solid var(--border); padding:6px 12px; border-radius:3px;
-  }
-  .controls{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  button{
-    font-family:'IBM Plex Sans',sans-serif; font-size:13px; font-weight:500;
-    background:var(--panel); color:var(--text); border:1px solid var(--border);
-    padding:8px 14px; border-radius:3px; cursor:pointer; transition:border-color .15s;
-  }
-  button:hover{ border-color:var(--gold); }
-  button.primary{ background:var(--gold); color:#141414; border-color:var(--gold); }
-  button.primary:hover{ opacity:.9; }
-  button.danger{ color:var(--rust); }
-  button.danger:hover{ border-color:var(--rust); }
+:root{
+  --paper:#EEF1F3;
+  --card:#FFFFFF;
+  --ink:#12212B;
+  --ink-soft:#4C5D6A;
+  --line:#CFD7DD;
+  --line-strong:#9FAEB8;
+  --accent:#1F3A5F;
+  --accent-soft:#E4EAF2;
+  --good:#157F4B;
+  --bad:#A81F2D;
+  --catA:#157F4B;
+  --catB:#2E6FA7;
+  --catC:#B07E00;
+  --catD:#D4691E;
+  --catE:#A81F2D;
+  --base:17px;
+}
+*{box-sizing:border-box}
+html{font-size:var(--base)}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Segoe UI",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  line-height:1.55;
+}
+h1,h2,h3{font-family:Georgia,"Iowan Old Style","Times New Roman",serif;font-weight:600;line-height:1.25;margin:0 0 .5rem}
+h1{font-size:1.5rem}
+h2{font-size:1.22rem;margin-top:0}
+h3{font-size:1.1rem}
+p{margin:0 0 .8rem}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px 80px}
 
-  main{ padding:20px 28px 60px; max-width:1400px; margin:0 auto; }
+/* ---------- header ---------- */
+header{background:var(--accent);color:#fff;padding:20px 0 0}
+header .wrap{padding-bottom:0}
+.titlebar{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;justify-content:space-between}
+header h1{color:#fff;margin:0}
+header .sub{color:#C6D4E6;font-size:.92rem;max-width:56ch;margin:.35rem 0 0}
+nav{display:flex;flex-wrap:wrap;gap:6px;margin-top:22px}
+nav button{
+  background:#33517A;color:#DCE6F2;border:0;border-bottom:4px solid transparent;
+  padding:12px 18px;font-size:.95rem;font-family:inherit;cursor:pointer;
+  border-radius:8px 8px 0 0;
+}
 
-  details.settings{
-    border:1px solid var(--border); border-radius:4px; margin-bottom:22px; background:var(--panel);
-  }
-  details.settings summary{
-    padding:12px 16px; cursor:pointer; font-weight:600; font-size:13.5px;
-    list-style:none; display:flex; justify-content:space-between; align-items:center;
-  }
-  details.settings summary::-webkit-details-marker{ display:none; }
-  details.settings summary::after{ content:'Edit config \25BE'; color:var(--text-dim); font-weight:400; font-size:12px; }
-  details.settings[open] summary::after{ content:'Edit config \25B4'; }
-  .settings-body{
-    padding:4px 16px 18px; display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
-    gap:14px 20px; border-top:1px solid var(--border); padding-top:16px;
-  }
-  .field{ display:flex; flex-direction:column; gap:5px; }
-  .field label{ font-size:12px; color:var(--text-dim); }
-  .field input, .field select{
-    background:#0B1017; border:1px solid var(--border); color:var(--text);
-    padding:7px 9px; border-radius:3px; font-family:'IBM Plex Mono',monospace; font-size:13px;
-  }
-  .settings-actions{ padding:0 16px 16px; display:flex; gap:10px; }
-  .settings-hint{ padding:0 16px 14px; color:var(--text-dim); font-size:12px; }
+nav button[aria-current="true"]{background:var(--paper);color:var(--ink);border-bottom-color:var(--catC);font-weight:600}
+nav button:hover{background:#40608C;color:#fff}
+nav button[aria-current="true"]:hover{background:var(--paper);color:var(--ink)}
 
-  .charts-grid{
-    display:grid; grid-template-columns:repeat(auto-fit,minmax(380px,1fr)); gap:16px; margin-bottom:22px;
-  }
-  .chart-card{
-    background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--gold);
-    border-radius:4px; padding:14px 16px 8px;
-  }
-  .chart-card h3{ margin:0 0 2px; font-size:13px; font-weight:600; }
-  .chart-card .stat-line{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text-dim); margin-bottom:8px; }
-  .chart-card canvas{ max-height:220px; }
-  .chart-card.rust{ border-left-color:var(--rust); }
-  .chart-card.teal{ border-left-color:var(--teal); }
+/* ---------- generic ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:24px;margin:22px 0}
+.card>h2:first-child{border-bottom:2px solid var(--line);padding-bottom:.5rem;margin-bottom:1rem}
+.hint{color:var(--ink-soft);font-size:.82rem;margin:.25rem 0 0;line-height:1.4}
+.lede{font-size:1.02rem;color:var(--ink-soft);max-width:70ch}
+.btn{
+  background:var(--accent);color:#fff;border:0;border-radius:8px;
+  padding:15px 26px;font-size:1.05rem;font-family:inherit;font-weight:600;cursor:pointer;
+}
+.btn:hover{background:#2B4D7B}
+.btn-2{background:#fff;color:var(--accent);border:2px solid var(--accent);padding:13px 24px}
+.btn-2:hover{background:var(--accent-soft)}
+.btn-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--catC);outline-offset:2px}
+.view{display:none}
+.view.on{display:block}
 
-  section.ledger{
-    border:1px solid var(--border); border-radius:4px; background:var(--panel); margin-bottom:22px;
-  }
-  section.ledger > summary{
-    padding:14px 16px; cursor:pointer; font-weight:600; font-size:13.5px; list-style:none;
-    display:flex; justify-content:space-between; align-items:center;
-  }
-  section.ledger > summary::-webkit-details-marker{ display:none; }
-  .ledger-body{ border-top:1px solid var(--border); padding:14px 16px; }
-  .ledger-toolbar{ display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap; align-items:center; }
-  .ledger-toolbar input, .ledger-toolbar select{
-    background:#0B1017; border:1px solid var(--border); color:var(--text);
-    padding:6px 9px; border-radius:3px; font-size:12.5px; font-family:'IBM Plex Mono',monospace;
-  }
-  .table-scroll{ overflow:auto; max-height:460px; border:1px solid var(--border); border-radius:3px; }
-  table.ledger-table{
-    border-collapse:collapse; width:100%; font-family:'IBM Plex Mono',monospace; font-size:12px;
-    white-space:nowrap;
-  }
-  table.ledger-table thead th{
-    position:sticky; top:0; z-index:2; background:#0B1017; color:var(--text-dim);
-    font-weight:500; text-align:right; padding:8px 10px; cursor:pointer;
-    border-bottom:1px solid var(--border); font-size:11.5px;
-  }
-  table.ledger-table thead th:first-child,
-  table.ledger-table tbody td:first-child{ text-align:left; }
-  table.ledger-table thead th:hover{ color:var(--gold); }
-  table.ledger-table thead th.sorted{ color:var(--gold); }
-  table.ledger-table thead th .grp{ display:block; font-size:10px; color:var(--border); }
-  table.ledger-table tbody td{
-    padding:6px 10px; text-align:right; border-bottom:1px solid rgba(33,43,54,.6);
-  }
-  table.ledger-table tbody tr:hover{ background:rgba(255,255,255,.03); }
-  table.ledger-table tbody tr.locked td:first-child{ color:var(--rust); font-weight:600; }
-  table.ledger-table tbody tr.benefits td:first-child{ color:var(--teal); font-weight:600; }
-  table.ledger-table .zero{ color:var(--border); }
-  table.ledger-table .owed{ color:var(--gold); }
-  table.ledger-table .earned{ color:var(--teal); }
-  table.ledger-table .lost{ color:var(--rust); }
-  .ledger-totals{
-    display:flex; gap:22px; flex-wrap:wrap; margin-top:10px; padding-top:10px;
-    border-top:1px solid var(--border); font-family:'IBM Plex Mono',monospace; font-size:12px;
-    color:var(--text-dim);
-  }
-  .ledger-totals b{ color:var(--text); font-weight:500; }
+/* ---------- settings form ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px 24px}
+.field label{display:block;font-weight:600;font-size:.95rem;margin-bottom:5px}
+.field input[type=number],.field select{
+  width:100%;height:48px;font-size:1rem;font-family:inherit;color:var(--ink);
+  padding:8px 12px;border:2px solid var(--line-strong);border-radius:7px;background:#fff;
+}
+.field.check{display:flex;gap:12px;align-items:flex-start}
+.field.check input{width:26px;height:26px;margin-top:3px;flex:none}
+.field.check label{margin:0}
+.subhead{margin:26px 0 10px;font-size:1.05rem;border-left:5px solid var(--catC);padding-left:12px}
+.subhead:first-of-type{margin-top:8px}
+.runbar{
+  position:sticky;bottom:0;background:#fff;border:1px solid var(--line);border-top:3px solid var(--accent);
+  border-radius:10px;padding:16px 20px;margin-top:24px;display:flex;flex-wrap:wrap;
+  gap:14px;align-items:center;justify-content:space-between;box-shadow:0 -2px 10px rgba(18,33,43,.08);
+}
+.runbar .status{font-size:.9rem;color:var(--ink-soft)}
 
-  ::-webkit-scrollbar{ width:8px; }
-  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:4px; }
+/* ---------- results ---------- */
+.headline{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:6px}
+.stat{background:#fff;border:1px solid var(--line);border-left:6px solid var(--accent);border-radius:8px;padding:16px 18px}
+.stat .k{font-size:.82rem;color:var(--ink-soft);display:block;line-height:1.3}
+.stat .v{font-family:Georgia,serif;font-size:1.3rem;font-weight:600;display:block;margin-top:6px}
+.story{background:var(--accent-soft);border:1px solid #B9C8DC;border-radius:10px;padding:20px 24px;margin:22px 0}
+.story h2{margin-bottom:.6rem}
+.story ul{margin:0;padding-left:1.2rem}
+.story li{margin-bottom:.55rem}
+.chartbox{height:440px;position:relative;margin-top:6px}
+.panels{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:18px;margin-top:10px}
+.panel{border:1px solid var(--line);border-radius:8px;padding:12px 12px 6px;background:#FCFDFD}
+.panel h4{margin:0 0 4px;font-family:Georgia,serif;font-size:1rem;display:flex;align-items:center;gap:8px}
+.panel .chartbox{height:210px;margin:0}
+.panel .catchip{width:auto;padding:0 8px}
+.legendnote{display:flex;flex-wrap:wrap;gap:16px;margin-top:14px;font-size:.85rem;color:var(--ink-soft)}
+.legendnote span{display:flex;align-items:center;gap:7px}
+.sw{width:22px;height:5px;border-radius:3px;display:inline-block}
+
+table{border-collapse:collapse;width:100%;font-size:.9rem;margin-top:10px}
+th,td{padding:11px 12px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+thead th{background:#E6EBEF;font-weight:700;border-bottom:2px solid var(--line-strong);position:sticky;top:0}
+tbody tr:nth-child(even){background:#F7F9FA}
+.tablescroll{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.tag{display:inline-block;padding:3px 10px;border-radius:20px;font-size:.78rem;font-weight:700;color:#fff}
+.tag.reg{background:var(--good)}
+.tag.def{background:var(--bad)}
+.catchip{display:inline-block;width:26px;height:26px;line-height:26px;text-align:center;border-radius:6px;color:#fff;font-weight:700;font-size:.85rem}
+
+.partable{font-size:.88rem}
+.partable th{text-align:center;vertical-align:bottom;font-size:.82rem;line-height:1.25;padding:10px 8px;white-space:normal}
+.partable td{padding:8px;text-align:center}
+.partable td:first-child{text-align:left;white-space:nowrap;font-weight:600}
+.partable input,.partable select{
+  height:44px;min-width:112px;width:100%;font-size:.95rem;font-family:inherit;
+  padding:6px 8px;border:2px solid var(--line-strong);border-radius:6px;background:#fff;color:var(--ink);text-align:center;
+}
+.partable .lim{font-family:Georgia,serif;font-size:1rem;font-weight:600;white-space:nowrap}
+
+.stepbar{
+  background:#F4F6F8;border:1px solid var(--line);
+  border-left:5px solid var(--catC);border-radius:10px;padding:16px 20px;margin:24px 0;
+  display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between;
+}
+.stepbar .wk{font-family:Georgia,serif;font-size:1.3rem;font-weight:600}
+.stepbar .btn-2{padding:11px 18px;font-size:.95rem}
+
+.empty{background:#fff;border:2px dashed var(--line-strong);border-radius:10px;padding:44px 24px;text-align:center}
+.empty p{max-width:48ch;margin:0 auto .9rem;color:var(--ink-soft)}
+
+.rules dt{font-weight:700;margin-top:1rem}
+.rules dd{margin:.2rem 0 0;color:var(--ink-soft)}
+.flag{background:#FBF3DF;border-left:5px solid var(--catC);padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0}
+.flag strong{display:block;margin-bottom:.3rem}
+
+@media (max-width:620px){
+  :root{--base:16px}
+  .card{padding:18px}
+  nav button{padding:12px 14px;font-size:.92rem}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
 
 <header>
-  <div>
-    <h1>P2P Lending — Default Behaviour Simulation</h1>
-    <div class="subtitle">First pass model — watch the credit-scoring &amp; lending rules interact over time</div>
-  </div>
-  <div class="controls">
-    <div class="counter" id="weekCounter">Week 0 &middot; Month 0.0</div>
-    <button id="btnWeek" class="primary">+1 Week</button>
-    <button id="btnMonth" class="primary">+1 Month</button>
-    <button id="btnReset" class="danger">Reset</button>
+  <div class="wrap">
+    <div class="titlebar">
+      <div>
+        <h1>Peer-to-Peer Lending Simulation</h1>
+        <p class="sub">A population of participants lending to and borrowing from one another under a configurable set of credit rules.</p>
+      </div>
+    </div>
+    <nav id="nav">
+      <button type="button" data-view="settings" aria-current="true">Parameters</button>
+      <button type="button" data-view="results">Run &amp; results</button>
+      <button type="button" data-view="people">Individuals</button>
+      <button type="button" data-view="compare">Comparison</button>
+    </nav>
   </div>
 </header>
 
-<main>
+<div class="wrap">
 
-  <!-- ======================================================================
-       SETTINGS PANEL
-       Every input here is two-way bound to the CONFIG object below.
-       Changing a value and clicking "Apply & Reset" rebuilds the sim from
-       scratch with the new numbers — this is the easiest way to tune things
-       without touching code. For values not exposed here (e.g. the
-       tenure->base-rate table), edit CONFIG directly in the
-       <script> block; every one of them is a labelled, commented variable.
-  ======================================================================= -->
-  <details class="ledger" open>
-    <summary><span>User ledger</span><span id="ledgerCount" style="color:var(--text-dim);font-weight:400;"></span></summary>
-    <div class="ledger-body">
-      <div class="ledger-toolbar">
-        <input type="text" id="ledgerSearch" placeholder="User id...">
-        <select id="ledgerFilter">
-          <option value="all">All users</option>
-          <option value="borrowing">Has money owed</option>
-          <option value="lending">Currently lending</option>
-          <option value="locked">Locked out</option>
-          <option value="benefits">Above-100 benefits</option>
-          <option value="idle">Never borrowed or lent</option>
-        </select>
+  <!-- ============ SETTINGS ============ -->
+  <section class="view on" id="view-settings">
+    <div class="card">
+      <h2>Parameters</h2>
+            <div id="form"></div>
+      <div class="btn-row" style="margin-top:26px">
+        <button type="button" class="btn-2" id="reset">Restore specification defaults</button>
+        <button type="button" class="btn" data-goto="results">Continue to Run &amp; results</button>
       </div>
-      <div class="table-scroll">
-        <table class="ledger-table">
-          <thead><tr id="ledgerHead"></tr></thead>
-          <tbody id="ledgerBody"></tbody>
-        </table>
+    </div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section class="view" id="view-results">
+    <div class="card">
+      <h2>Run</h2>
+      <div class="stepbar" id="stepbar">
+        <div><span class="wk" id="wknow">Not started</span> <span class="hint" id="wksub" style="display:inline"></span></div>
+        <div class="btn-row">
+          <button type="button" class="btn" data-step="1">+1 week</button>
+          <button type="button" class="btn" data-step="4">+4 weeks</button>
+          <button type="button" class="btn" data-step="48">+48 weeks</button>
+          <button type="button" class="btn-2" id="restart">Reset to week 0</button>
+        </div>
       </div>
-      <div class="ledger-totals" id="ledgerTotals"></div>
+      <div class="headline" id="runlive"></div>
     </div>
-  </details>
-
-  <div class="charts-grid">
-    <div class="chart-card rust">
-      <h3>Borrowers defaulting / week</h3>
-      <div class="stat-line" id="statDefaults">—</div>
-      <canvas id="chartDefaults"></canvas>
+    <div class="empty" id="results-empty">
+      <p>Advance the horizon to build the population and begin.</p>
     </div>
-    <div class="chart-card rust">
-      <h3>Borrowers with a write-off / week</h3>
-      <div class="stat-line" id="statWriteoffs">—</div>
-      <canvas id="chartWriteoffs"></canvas>
-    </div>
-    <div class="chart-card teal">
-      <h3>Average credit score</h3>
-      <div class="stat-line" id="statAvgScore">—</div>
-      <canvas id="chartAvgScore"></canvas>
-    </div>
-    <div class="chart-card teal">
-      <h3>Credit score distribution (current)</h3>
-      <div class="stat-line" id="statDist">—</div>
-      <canvas id="chartDist"></canvas>
-    </div>
-    <div class="chart-card">
-      <h3>Total outstanding principal</h3>
-      <div class="stat-line" id="statOutstanding">—</div>
-      <canvas id="chartOutstanding"></canvas>
-    </div>
-    <div class="chart-card rust">
-      <h3>Cumulative principal lost to write-offs</h3>
-      <div class="stat-line" id="statLost">—</div>
-      <canvas id="chartLost"></canvas>
-    </div>
-    <div class="chart-card teal">
-      <h3>Active borrowers vs lenders</h3>
-      <div class="stat-line" id="statParticipation">—</div>
-      <canvas id="chartParticipation"></canvas>
-    </div>
-    <div class="chart-card teal">
-      <h3>Cumulative interest earned by lenders</h3>
-      <div class="stat-line" id="statInterest">—</div>
-      <canvas id="chartInterest"></canvas>
-    </div>
-    <div class="chart-card teal">
-      <h3>Users ahead vs behind (net position)</h3>
-      <div class="stat-line" id="statNetSplit">—</div>
-      <canvas id="chartNetSplit"></canvas>
-    </div>
-    <div class="chart-card rust">
-      <h3>Users locked out (score &lt; lockout threshold)</h3>
-      <div class="stat-line" id="statLocked">—</div>
-      <canvas id="chartLocked"></canvas>
-    </div>
-  </div>
-
-  <details class="settings" open>
-    <summary>Simulation config</summary>
-    <div class="settings-body" id="settingsBody"></div>
-    <div class="settings-actions">
-      <button id="btnApply" class="primary">Apply &amp; Reset</button>
-      <span class="settings-hint" style="align-self:center;">Applying rebuilds the population from week 0 with the new values.</span>
-    </div>
-  </details>
-
-  <details class="eventlog" open>
-    <summary><span>Event log</span><span id="logCount" style="color:var(--text-dim);font-weight:400;"></span></summary>
-    <div class="log-body">
-      <div class="log-toolbar">
-        <select id="logType">
-          <option value="all">All events</option>
-          <option value="loan">Loans made</option>
-          <option value="unfunded">Unfunded requests</option>
-          <option value="miss">Missed instalments</option>
-          <option value="writeoff">Write-offs</option>
-          <option value="repaid">Loans repaid</option>
-          <option value="lockout">Lockouts</option>
-          <option value="bonus">Clean-year bonuses</option>
-        </select>
-        <input type="text" id="logUser" placeholder="User id...">
-        <input type="number" id="logWeek" placeholder="Week..." style="width:100px;">
-        <label><input type="checkbox" id="logNewestFirst" checked> Newest first</label>
+    <div id="results-body" style="display:none">
+      <div class="empty" id="week0" style="display:none">
+        <p>Week 0. All pillow banks are empty, all ratings are at their opening value, and no loans exist.</p>
       </div>
-      <div class="log-list" id="logList"></div>
+      <div class="headline" id="headline"></div>
+      <div class="story" id="story"></div>
+
+      <div class="card">
+        <h2>Series grouping</h2>
+                <div class="grid"><div class="field">
+          <label for="view">Chart layout</label>
+          <select id="view">
+            <option value="combined" selected>Combined &mdash; one chart, all series</option>
+            <option value="arch">One chart per archetype &mdash; 30 panels</option>
+            <option value="profile">One chart per group &mdash; 5 panels</option>
+            <option value="person">One chart per participant</option>
+          </select>
+        </div><div class="field" id="person-field" style="display:none">
+          <label for="person-filter">Participants from</label>
+          <select id="person-filter"></select>
+        </div><div class="field" id="series-field">
+          <label for="grouping">Series in the combined chart</label>
+          <select id="grouping">
+            <option value="arch" selected>Archetype &mdash; all 30 codes</option>
+            <option value="cat">Group &mdash; A to E</option>
+            <option value="risk">Lending posture &mdash; cautious or risk-taking</option>
+            <option value="tenure">Preferred tenure &mdash; 4, 8 or 12 weeks</option>
+            <option value="catrisk">Group, split by lending posture</option>
+          </select>
+        </div></div>
+      </div>
+
+      <div class="card">
+        <h2>Pillow bank</h2>
+                <div id="panel-pb"></div>
+      </div>
+
+      <div class="card">
+        <h2>Credit rating</h2>
+                <div id="panel-cr"></div>
+      </div>
+
+      <div class="card">
+        <h2>Credit rating distribution</h2>
+                <div class="grid"><div class="field">
+          <label for="dist-by">Break down by</label>
+          <select id="dist-by">
+            <option value="cat" selected>Group</option>
+            <option value="arch">Archetype</option>
+            <option value="risk">Lending posture</option>
+            <option value="tenure">Preferred tenure</option>
+            <option value="catrisk">Group and lending posture</option>
+          </select>
+        </div></div>
+        <div class="chartbox"><canvas id="c-dist"></canvas></div>
+      </div>
+
+      <div class="card">
+        <h2>Participants in default</h2>
+                <div id="panel-def"></div>
+      </div>
+
+      <div class="card">
+        <h2>Excluded from borrowing</h2>
+                <div id="panel-lock"></div>
+      </div>
+
+      <div class="card">
+        <h2>Interest paid per participant</h2>
+                <div id="panel-ip"></div>
+      </div>
+
+      <div class="card">
+        <h2>Interest earned per participant</h2>
+                <div id="panel-ie"></div>
+      </div>
+
+      <div class="card">
+        <h2>Cumulative interest across the population</h2>
+                <div class="chartbox"><canvas id="c-int"></canvas></div>
+      </div>
+
+      <div class="card">
+        <h2>Origination and unmet demand</h2>
+                <div class="chartbox"><canvas id="c-loans"></canvas></div>
+      </div>
+
+      <div class="card">
+        <h2>Status at the horizon</h2>
+        <div class="grid"><div class="field">
+          <label for="status-by">Break down by</label>
+          <select id="status-by">
+            <option value="cat" selected>Group &mdash; A to E</option>
+            <option value="arch">Archetype &mdash; all 30 codes</option>
+            <option value="person">Participant &mdash; one row each</option>
+          </select>
+        </div></div>
+        <p class="hint" id="status-note"></p>
+        <div class="tablescroll"><table id="t-status"></table></div>
+      </div>
+
+      <div class="card">
+        <div class="btn-row">
+          <button type="button" class="btn-2" id="save-scenario">Add this run to the comparison</button>
+          <button type="button" class="btn-2" id="csv-week">Export weekly series (CSV)</button>
+          <button type="button" class="btn-2" id="csv-people">Export participant detail (CSV)</button>
+        </div>
+      </div>
     </div>
-  </details>
+  </section>
 
-</main>
+  <!-- ============ PEOPLE ============ -->
+  <section class="view" id="view-people">
+    <div class="empty" id="people-empty">
+      <p>Nothing to show yet. Start the simulation on the Run &amp; results page.</p>
+      <button type="button" class="btn" data-goto="results">Go to Run &amp; results</button>
+    </div>
+    <div id="people-body" style="display:none">
+      <div class="card">
+        <h2>Individual detail</h2>
+        <div class="grid">
+          <div class="field">
+            <label for="person">Participant</label>
+            <select id="person"></select>
+          </div>
+        </div>
+        <div id="person-summary" style="margin-top:18px"></div>
+        <div class="chartbox" style="height:320px"><canvas id="c-person"></canvas></div>
+        <div class="chartbox" style="height:320px"><canvas id="c-person-cr"></canvas></div>
+        <h3 style="margin-top:26px">Event log</h3>
+        <div class="tablescroll" style="max-height:400px"><table id="t-person-log"></table></div>
+      </div>
+    </div>
+  </section>
 
+  <!-- ============ COMPARE ============ -->
+  <section class="view" id="view-compare">
+    <div class="card">
+      <h2>Comparison</h2>
+            <div class="tablescroll" id="compare-wrap"><table id="t-compare"></table></div>
+      <div class="btn-row" style="margin-top:18px">
+        <button type="button" class="btn-2" id="clear-scenarios">Clear comparison</button>
+      </div>
+    </div>
+  </section>
+
+</div>
 <script>
-/* =========================================================================
-   HOW THIS FILE IS ORGANISED  —  read this first
-   -------------------------------------------------------------------------
-   This whole simulation is one page with no server and no database. It runs
-   entirely in your browser. Everything below is in reading order:
+/* ==================================================================
+   PEER-TO-PEER LENDING SIMULATION
+   ------------------------------------------------------------------
+   Everything the model does is driven by the DEFAULTS object below.
+   Change a number there and it changes everywhere. Nothing is
+   hard-coded inside the engine.
+   ================================================================== */
 
-     1. CONFIG          every rule and number you can change
-     2. STATE           the data that changes as the simulation runs
-     3. HELPERS         small reusable calculations
-     4. SETUP           building the users, starting/restarting the sim
-     5. WEEKLY STEP     the heart of it: what happens in one week
-     6. AGGREGATES      turning user data into the numbers the charts show
-     7. RENDERING       drawing the table, charts and log on screen
-     8. WIRE-UP         connecting the buttons to the code
+/* ==================================================================
+   PEER-TO-PEER LENDING SIMULATION - THE MODEL
+   ------------------------------------------------------------------
+   150 people lend to and borrow from one another. Nobody is a bank:
+   every rupee lent comes out of another participant's pocket, and
+   every rupee repaid goes back into it. The only money entering the
+   system is each person's weekly surplus.
 
-   THE BASIC IDEA
-   Every user can both borrow and lend. Each week we:
-     - pick which borrowers default this week
-     - collect (or fail to collect) that week's payment on every active loan
-     - update credit scores
-     - let some users take out new loans, matched to a lender
-     - record the week's totals so the charts can plot them
+   EACH PERSON HAS
+     pb      pillow bank - their running cash balance, may go negative
+     cr      credit rating - opens at 100, gates borrowing and pricing
+     loans   loans they have TAKEN (they are the borrower)
+     given   loans they have MADE (they are the lender)
 
-   A NOTE ON READING THE CODE
-   "function name(...) { ... }" defines a named block of instructions.
-   Nothing inside a function happens until something calls it by name.
-   "//" starts a comment: a note for humans that the computer ignores.
-========================================================================= */
+   THE THREE-CHARACTER ARCHETYPE CODE, e.g. "B23"
+     1st  group A-E   - surplus range, and whether they clear arrears
+     2nd  posture 1/2 - 1 refuses risky borrowers, 2 lends to anyone
+     3rd  tenure 1/2/3 - prefers a 4, 8 or 12 week loan
+   5 groups x 2 postures x 3 tenures = 30 archetypes, 5 people each.
 
-/* =========================================================================
-   1. CONFIG
-   Every tunable number/rule from the spec lives here, nowhere else. The
-   settings panel above reads/writes the flat fields automatically; nested
-   tables (the tenure -> base interest table) are edited by hand here.
-========================================================================= */
-let CONFIG = {
+   THE WEEK, IN ORDER (see stepWeek)
+     1  everyone draws a random surplus or deficit
+     2  this week's instalments are worked out and frozen
+     3  anyone below -1000 borrows; anyone above +1000 has money to lend
+     4  instalments are paid or missed; arrears swept; spare cash applied
+     5  default status set, and the rating charged for arrears still owing
+     6  the week's figures recorded for the charts
 
-  /* --- population & how often things happen ---------------------------- */
+   MONEY IS CONSERVED. At any point, the sum of all pillow banks equals
+   the sum of every surplus ever drawn. Loans, repayments and interest
+   only move money sideways. This is the main correctness check.
+   ================================================================== */
 
-  numUsers: 100,                  // how many people are in the simulation
+const CATS = ['A','B','C','D','E'];
 
-  // THE DEFAULT RATE. This is an exact SHARE of active borrowers, not a
-  // per-person chance. Each week we count how many people currently hold a
-  // loan, multiply by this, and pick exactly that many at random to default.
-  // With 95 active borrowers at 0.10, exactly 10 default. Every week. The
-  // count never varies — only WHO is chosen does.
-  // A borrower picked to default misses every instalment due that week, and
-  // takes ONE score penalty no matter how many loans they hold.
-  weeklyDefaultRate: 0.10,
+/* ------------------------------------------------------------------
+   EVERY number the model uses lives here and nowhere else. Change a
+   value in this object and it changes everywhere - the engine below
+   reads all of it through the C.* config and hard-codes nothing.
+   The parameters page writes back into this same set of keys.
+   ------------------------------------------------------------------ */
+const DEFAULTS = {
+  /* --- population --- */
+  perSubgroup: 5,
+  runs: 1,
 
-  // THE BORROWING RATE. Unlike the default rate above, this one IS a
-  // per-person chance: each eligible user independently flips a weighted
-  // coin each week. So the number of new loans varies week to week — at 0.12
-  // with 100 users you will see roughly 12, but anywhere from about 6 to 18
-  // is ordinary. That variation is real, not a bug.
-  weeklyBorrowProbability: 0.12,
+  /* --- the five groups --- */
+  A_min:-2000, A_max:2000, A_regularise:1, A_prepay:0, A_biasCR:100, A_bias:1000, A_shortfall:'miss',
+  B_min:-1500, B_max:1500, B_regularise:1, B_prepay:0, B_biasCR:90,  B_bias:700,  B_shortfall:'miss',
+  C_min:-2000, C_max:1500, C_regularise:0, C_prepay:0, C_biasCR:90,  C_bias:0,    C_shortfall:'miss',
+  D_min:-2000, D_max:1000, D_regularise:1, D_prepay:0, D_biasCR:90,  D_bias:700,  D_shortfall:'miss',
+  E_min:-2500, E_max:1000, E_regularise:0, E_prepay:0, E_biasCR:90,  E_bias:0,    E_shortfall:'miss',
 
-  /* --- how the credit-score chart is drawn ----------------------------- */
+  /* --- pillow bank thresholds --- */
+  lendAbove: 1000,
+  borrowBelow: -1000,
 
-  // Width of each bar in the score histogram. Because scores move in steps of
-  // 5, a width of 5 means each bar holds exactly one possible score, and the
-  // bars are drawn separated to show that. Widen this to group scores together.
-  scoreHistogramBinSize: 5,
+  /* --- loans --- */
+  loanAmounts: '1000,2000,3000,4000,5000',
+  maxPrincipal: 10000,
 
-  /* --- event log -------------------------------------------------------- */
+  /* --- rating bands and loan ceilings --- */
+  maxLoans: 4, cr75: 75, maxLoansAt75: 3, cr65: 65, maxLoansAt65: 2, crNoLoan: 50,
 
-  // Maximum lines kept in the log. Once full, the oldest are discarded to make
-  // room. Stops a long run using unlimited memory.
-  maxLogEntries: 3000,
+  /* --- credit rating --- */
+  crStart: 100, crCap: 100, crFloor: -100, riskyBelow: 75,
+  crUpMode:'flat',   crUp: 3,   crUpPer: 1000,
+  crDownMode:'flat', crDown: 6, crDownPer: 1000,
 
-  /* --- loan size -------------------------------------------------------- */
-
-  // The range users ask to borrow within. One range for everybody: how much
-  // someone WANTS does not depend on their credit score in this model.
-  loanRequestMin: 200,
-  loanRequestMax: 3000,
-
-  /* --- the lending cap --------------------------------------------------- */
-
-  // THE ONLY BORROWING LIMIT IN THE MODEL.
-  // The most one lender can have out to one borrower at a time.
-  //
-  // Read carefully, because it is narrower than it looks:
-  //   - it does NOT cap a lender's total book. One lender can have ₹50,000
-  //     out in total, as long as no single borrower owes them over ₹3,000.
-  //   - it does NOT cap what a borrower can raise. They can borrow ₹3,000
-  //     each from ten different people.
-  //   - nothing else trims a loan request. This is the whole of it.
-  maxExposurePerPair: 3000,
-
-  // When a borrower approaches someone for money, how often that person says
-  // yes. 0.7 means they agree 70% of the time.
-  lenderWillingness: 0.7,
-
-  // How many people a borrower asks before giving up for the week. Modelling
-  // choice: borrowers ask around a bit rather than having perfect knowledge
-  // of everyone who might lend to them.
-  maxLenderAttempts: 5,
-
-  /* --- loan length and repayment ---------------------------------------- */
-
-  weeksPerMonth: 4,                          // a "month" is 4 weeks throughout
-  loanTenuresMonths: [2, 4, 6, 8, 10, 12],   // possible loan lengths, picked at random
-
-  // A default is ONE missed weekly instalment.
-  // This many defaults IN A ROW writes the loan off and the lender loses the
-  // remaining principal. Any single on-time payment resets the count to zero,
-  // so three misses spread out over months do NOT write a loan off.
-  consecutiveMissesForWriteOff: 3,
-
-  // What a missed week actually does. 'DEFER' means the principal simply is
-  // not paid down that week: the balance stays where it was and the loan
-  // finishes one week later. Missing weeks delays the loan; it does not add
-  // any penalty charge, and the total interest is unchanged.
-  missedInstalmentHandling: 'DEFER',
-
-  /* --- interest rates ---------------------------------------------------- */
-
-  // Starting interest rate for each loan length, for a borrower at score 100.
-  // Shorter loans carry higher rates.
-  baseInterestByTenure: { 2: 25, 4: 20, 6: 16, 8: 14, 10: 12, 12: 11 },
-
-  // On top of the base rate: a worse credit score costs more.
-  // "+3% for every full 10 points below 100."
-  scoreStep: 10,               // the size of one step
-  scoreStepPenaltyPercent: 3,  // what each step adds
-
-  // How part-steps are treated:
-  //   'STEP'       only WHOLE steps count. A score of 85 is 15 points below
-  //                100, which contains one full 10-point step, so it adds 3%
-  //                — the same as a score of 90.
-  //   'CONTINUOUS' scales smoothly instead: 95 adds 1.5%, 85 adds 4.5%.
-  scoreStepMode: 'STEP',
-
-  /* --- credit score rules ------------------------------------------------ */
-
-  startingScore: 100,          // everyone begins here
-
-  onTimeReward: 5,             // points gained for a week with no default.
-                               // Once per person per week — NOT once per loan.
-  scoreCeiling: 100,           // the weekly reward stops here
-
-  // Going above the ceiling needs a full clean year, not just clean weeks.
-  aboveCeilingRewardPerYear: 5,
-  yearInWeeks: 52,             // how many clean weeks make "a year"
-  scoreCap: 125,               // the highest a score can ever go
-
-  // Penalties. Which one applies depends on where the score currently is.
-  defaultPenaltyAtOrBelow100: 10,   // at or below 100: lose 10 points
-  defaultPenaltyDropToAbove100: 90, // above 100: drop straight to 90, losing
-                                    // all the extra trust at once
-
-  lockoutThreshold: 40,        // below this score you cannot borrow at all
-  benefitsThreshold: 100,      // above this the clean-year bonus can apply
+  /* --- interest --- */
+  irBase: 20, irStep: 2, irBand: 5, irPeriod: 'year', irMode: 'reducing'
 };
 
-// Fields exposed as simple number inputs in the settings panel.
-// (label, config key, step)
-const SETTINGS_FIELDS = [
-  ['Number of users', 'numUsers', 1],
-  ['Share of borrowers defaulting/wk (0–1)', 'weeklyDefaultRate', 0.01],
-  ['Weekly borrow probability (0–1)', 'weeklyBorrowProbability', 0.01],
-  ['Loan request min (₹)', 'loanRequestMin', 50],
-  ['Loan request max (₹)', 'loanRequestMax', 100],
-  ['Max exposure, one pair (₹)', 'maxExposurePerPair', 100],
-  ['Lender willingness (0–1)', 'lenderWillingness', 0.05],
-  ['Lender search attempts', 'maxLenderAttempts', 1],
-  ['Consecutive defaults = write-off', 'consecutiveMissesForWriteOff', 1],
-  ['Score step size', 'scoreStep', 1],
-  ['Interest add-on per step (%)', 'scoreStepPenaltyPercent', 0.5],
-  ['On-time reward (points)', 'onTimeReward', 1],
-  ['Score ceiling', 'scoreCeiling', 1],
-  ['Above-ceiling reward / year', 'aboveCeilingRewardPerYear', 1],
-  ['Score cap', 'scoreCap', 1],
-  ['Score histogram bin size', 'scoreHistogramBinSize', 1],
-  ['Default penalty (score <= 100)', 'defaultPenaltyAtOrBelow100', 1],
-  ['Drop-to score (score > 100)', 'defaultPenaltyDropToAbove100', 1],
-  ['Lockout threshold', 'lockoutThreshold', 1],
-  ['Benefits threshold', 'benefitsThreshold', 1],
+/* Fixed for every run: 4, 8 and 12 weeks, as the specification sets out. */
+/* Loan lengths available to everyone, in weeks. Not user-editable:
+   the archetype's third digit maps onto this list. A loan bills once
+   a week for its whole tenure, so a 4-week loan bills 4 times and a
+   12-week loan bills 12 - the tenure changes the SIZE of the weekly
+   payment, never how often it falls due. */
+const TENURES = [4,8,12];
+
+const FORM = [
+  { title:'Population', fields:[
+    {k:'perSubgroup', l:'Participants per archetype', t:'num', min:1, max:60, step:1},
+    {k:'runs', l:'Repetitions to average', t:'num', min:1, max:50, step:1}
+  ]},
+  { title:'Group parameters', table:'cats' },
+  { title:'Rating bands and loan ceilings', table:'limits' },
+  { title:'Pillow bank thresholds', fields:[
+    {k:'lendAbove', l:'Must lend above (\u20B9)', t:'num', min:0, max:1000000, step:100},
+    {k:'borrowBelow', l:'Must borrow below (\u20B9)', t:'num', min:-1000000, max:0, step:100}
+  ]},
+  { title:'Loans', fields:[
+    {k:'loanAmounts', l:'Loan sizes available (\u20B9)', t:'text'},
+    {k:'maxPrincipal', l:'Maximum total borrowing (\u20B9)', t:'num', min:1000, max:1000000, step:1000}
+  ]},
+  { title:'Credit rating', fields:[
+    {k:'crStart', l:'Opening rating', t:'num', min:0, max:1000, step:1},
+    {k:'riskyBelow', l:'Borrower counts as risky below', t:'num', min:-1000, max:100, step:1}
+  ]},
+  { title:'Rating movement', table:'cr' },
+  { title:'Interest', fields:[
+    {k:'irBase', l:'Rate at the top rating (%)', t:'num', min:0, max:200, step:0.5},
+    {k:'irStep', l:'Rate rises by (%)', t:'num', min:0, max:50, step:0.5},
+    {k:'irBand', l:'\u2026 for every fall of this many rating points', t:'num', min:1, max:100, step:1},
+    {k:'irPeriod', l:'Quoted rate is', t:'select', opts:[['year','per year'],['month','per month'],['term','one charge for the whole loan']]},
+    {k:'irMode', l:'Interest charged on', t:'select', opts:[['reducing','balance outstanding'],['flat','original loan amount']]}
+  ]}
 ];
 
-/* =========================================================================
-   2. STATE
-   The simulation's memory. Everything here is emptied and rebuilt whenever
-   you press Reset or Apply & Reset. "let" means "this value will change as
-   the simulation runs" (as opposed to a fixed value).
-========================================================================= */
+const CATFIELDS = [
+  {k:'_min', c:'Min weekly surplus (\u20B9)', t:'num', min:-100000, max:100000, step:100},
+  {k:'_max', c:'Max weekly surplus (\u20B9)', t:'num', min:-100000, max:100000, step:100},
+  {k:'_regularise', c:'Regularises', t:'select', opts:[['1','Yes'],['0','No']]},
+  {k:'_prepay', c:'Prepayment rate (%)', t:'num', min:0, max:100, step:1},
+  {k:'_biasCR', c:'Surplus bias below rating', t:'num', min:-1000, max:1000, step:1},
+  {k:'_bias', c:'Surplus bias (\u20B9)', t:'num', min:0, max:100000, step:100},
+  {k:'_shortfall', c:'On shortfall', t:'select', opts:[['miss','Instalment missed'],['pay','Paid regardless']]}
+];
 
-// Every person in the simulation. Each entry holds their credit score, the
-// loans they have taken, and their record as a lender. Built by buildUsers().
-let users = [];
+/* ================= helpers ================= */
+/* ---------- small utilities ---------- */
+/* Seeded random number generator. Seeded, not Math.random(), so that
+   the same seed replays the same run exactly - which is what makes
+   "reset to week 0" reproduce a run and what lets repetitions be
+   averaged meaningfully. */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function ri(rng,lo,hi){return Math.round(lo+rng()*(hi-lo));}
+function shuffle(a,rng){for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));const t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function nearestTenure(pref,list){let best=list[0];for(const t of list){const d=Math.abs(t-pref),b=Math.abs(best-pref);if(d<b||(d===b&&t<best))best=t;}return best;}
+function rupees(n){const s=Math.round(n).toLocaleString('en-IN');return '\u20B9'+s;}
+function rupees0(n){return (n<0?'\u2212':'')+'\u20B9'+Math.abs(Math.round(n)).toLocaleString('en-IN');}
 
-// Which week we are on. Starts at 0; each "+1 Week" press adds 1.
-let week = 0;
-
-// One snapshot per week, appended as the weeks pass. The charts read this
-// array directly — chart position N on the x-axis is history[N].
-// Each snapshot holds that week's defaults, write-offs, average score,
-// outstanding principal, and so on.
-let history = [];
-
-// Running totals that must survive from week to week (they accumulate rather
-// than being recalculated from scratch each time).
-let cumulativeLost = 0;      // total principal lost to write-offs, all time
-let cumulativeInterest = 0;  // total interest collected by lenders, all time
-
-// Holds the Chart.js objects once the charts are drawn, so we can update
-// them later instead of rebuilding them every week.
-let charts = {};
-
-// The human-readable event log shown at the bottom of the page.
-// Oldest entries are at the start, newest at the end.
-let eventLog = [];
-
-// Adds one line to the event log.
-//
-//   type   = what kind of event, used by the log's filter dropdown. One of:
-//            'loan'     someone borrowed from someone else
-//            'miss'     a borrower defaulted this week
-//            'writeoff' a loan was given up on
-//            'repaid'   a loan was fully paid off
-//            'lockout'  a user's score fell below the borrowing threshold
-//            'unlock'   a user's score recovered above it
-//            'unfunded' someone wanted a loan but no lender could fund it
-//            'bonus'    a user earned the clean-year score bonus
-//   userId = the person the line is "about" (shown at the start of the line)
-//   text   = the sentence shown on screen
-//   counterpartyId = the OTHER person involved, if there is one.
-//
-// Why counterpartyId exists: a loan involves two people. Writing one line for
-// the borrower and a mirror-image line for the lender would double the log and
-// read as duplicates. Instead we write ONE line and record both ids, so
-// filtering the log by either person's id still finds it.
-function log(type, userId, text, counterpartyId = null) {
-  eventLog.push({ week, userId, counterpartyId, type, text });
-
-  // The log is capped so a long run cannot grow it without limit. Once full,
-  // drop the oldest entries to make room for new ones.
-  if (eventLog.length > CONFIG.maxLogEntries) {
-    eventLog.splice(0, eventLog.length - CONFIG.maxLogEntries);
-  }
+/* Turns the flat form values (all strings) into the typed config object
+   the engine uses. Also derives the things the form does not ask for:
+   how many people per group, the parsed loan-size list, and the
+   per-group sub-object C.cat.A ... C.cat.E. */
+function structured(raw){
+  const C = Object.assign({},raw);
+  ['runs','perSubgroup','lendAbove','borrowBelow','maxLoans','cr75','maxLoansAt75','cr65','maxLoansAt65',
+   'crNoLoan','maxPrincipal','crStart','crCap','crFloor','riskyBelow','crUp','crUpPer','crDown','crDownPer',
+   'irBase','irStep','irBand'].forEach(k=>C[k]=parseFloat(C[k]));
+  C.perCategory = Math.max(1, Math.round(C.perSubgroup)) * 6;
+  C.amounts = String(raw.loanAmounts).split(',').map(s=>parseInt(s.trim(),10)).filter(n=>n>0).sort((a,b)=>a-b);
+  if(!C.amounts.length) C.amounts=[1000];
+  C.tenures = TENURES.slice();
+  C.irMode = String(raw.irMode); C.irPeriod = String(raw.irPeriod);
+  C.cat={};
+  CATS.forEach(k=>{C.cat[k]={
+    min:parseFloat(raw[k+'_min']), max:parseFloat(raw[k+'_max']),
+    prepay:parseFloat(raw[k+'_prepay'])/100,
+    regularise: String(raw[k+'_regularise'])==='1',
+    biasCR:parseFloat(raw[k+'_biasCR']), bias:parseFloat(raw[k+'_bias']),
+    shortfall: String(raw[k+'_shortfall'])
+  };});
+  return C;
 }
 
-/* =========================================================================
-   3. HELPERS
-   Small calculations used in several places.
-========================================================================= */
-
-// A random decimal number somewhere between min and max.
-// Used for picking loan amounts.
-function rand(min, max) { return Math.random() * (max - min) + min; }
-
-// Picks one item at random from a list.
-// Used for choosing a loan tenure and for choosing candidate lenders.
-function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
-
-// Works out the interest rate for a loan, as a percentage.
-//
-// Two things decide it:
-//   1. The tenure. Shorter loans carry a higher rate (see baseInterestByTenure).
-//   2. The borrower's credit score. A score below 100 adds to the rate.
-//
-// Worked example: a 6-month loan at score 80.
-//   base rate for 6 months                    = 16%
-//   score is 20 points below 100
-//   20 points / 10-point steps                = 2 full steps
-//   2 steps x 3% per step                     = +6%
-//   final rate                                = 22%
-function getBaseInterestRate(score, tenureMonths) {
-  // Look up the starting rate for this loan length. If someone adds a tenure
-  // to loanTenuresMonths without adding a matching row to the rate table,
-  // this would be undefined and every downstream number would become NaN.
-  // Fall back to the longest tenure's rate and carry on.
-  let base = CONFIG.baseInterestByTenure[tenureMonths];
-  if (!Number.isFinite(base)) {
-    const known = Object.keys(CONFIG.baseInterestByTenure).map(Number).sort((a, b) => a - b);
-    base = known.length ? CONFIG.baseInterestByTenure[known[known.length - 1]] : 0;
-  }
-
-  // How far below 100 is this score? (Never negative — a score above 100
-  // gets no discount, it just gets no penalty.)
-  const below100 = Math.max(0, 100 - score);
-
-  let addition;
-  if (CONFIG.scoreStepMode === 'CONTINUOUS') {
-    // Smooth scaling: a score of 95 is half a step below, so it adds half
-    // the penalty (1.5% rather than 3%).
-    addition = (below100 / CONFIG.scoreStep) * CONFIG.scoreStepPenaltyPercent;
-  } else {
-    // STEP mode (the default): only WHOLE steps count. A score of 85 is 15
-    // points below, which contains one full 10-point step, so it adds 3%
-    // — exactly the same as a score of 90. Math.floor rounds down.
-    const steps = Math.floor(below100 / CONFIG.scoreStep);
-    addition = steps * CONFIG.scoreStepPenaltyPercent;
-  }
-
-  return base + addition;
+/* THE INTEREST LADDER.
+   20% at a rating of 100, rising 2% for every 5 points below it.
+   Rounding UP the band means 99.9 already costs 22%, and 94.9 costs
+   24% - the rate steps at the round number, matching the specification.
+   The rate is read once when the loan is contracted and then never
+   changes for that loan, however the borrower's rating moves after. */
+function irFor(cr,C){
+  if(cr>=100) return C.irBase;
+  return C.irBase + C.irStep*Math.ceil((100-cr)/C.irBand);
+}
+/* HOW MANY LOANS MAY BE HELD AT ONCE, by rating band.
+   4 normally, 3 below 75, 2 below 65. Below 50 no new borrowing at all
+   (checked separately in stepWeek). Note this gates NEW borrowing only:
+   loans already running are never called in, so someone holding four
+   loans whose rating then slips simply cannot borrow again until enough
+   of them run off. */
+function maxLoansFor(cr,C){
+  if(cr<C.cr65) return C.maxLoansAt65;
+  if(cr<C.cr75) return C.maxLoansAt75;
+  return C.maxLoans;
+}
+/* Splits a category of n people into its subtypes: the second digit is the
+   lending style, the third is the loan length they favour. */
+/* Builds the 6 archetypes within each group: every combination of
+   lending posture (cautious / risk-taking) and preferred tenure. */
+const TDIGIT={4:'1',8:'2',12:'3'};
+const ARCHETYPES=[];
+[false,true].forEach(rt=>TENURES.forEach(t=>ARCHETYPES.push({riskTaker:rt, prefTenure:t})));
+function makeSubtypes(n){
+  const out=[];
+  for(let i=0;i<n;i++) out.push(ARCHETYPES[i%ARCHETYPES.length]);
+  return out;
+}
+/* ---------- three quick reads of a person's debt position ---------- */
+/* Total principal still owed across all open loans. */
+function owedNow(p){let s=0;for(const L of p.loans) if(L.open) s+=L.outstanding; return s;}
+/* Total rupees overdue - missed principal plus missed interest.
+   Anything above zero means this person is in default. */
+function arrearsOf(p){let s=0;for(const L of p.loans) if(L.open) s+=L.arrP+L.arrI; return s;}
+/* how many missed instalments are still outstanding across all open loans */
+function missesOf(p){let n=0;for(const L of p.loans) if(L.open) n+=L.arrN; return n;}
+/* A rating event is worth either a fixed number of points, or a number of
+   points for every <per> rupees the person currently owes. */
+/* MOVES THE CREDIT RATING BY ONE EVENT.
+   Flat basis: a fixed number of points, the specification's +3 / -6.
+   Scaled basis: points multiplied by how much the person owes, counted
+   in whole bands - Rs9,500 against a Rs1,000 band counts as 10 bands,
+   not 9.5, because of the Math.ceil. Always clamped to the floor and
+   ceiling so a rating cannot run away. */
+function crMove(p, dir, C){
+  const pts  = dir==='up' ? C.crUp : -C.crDown;
+  const mode = dir==='up' ? C.crUpMode : C.crDownMode;
+  const per  = dir==='up' ? C.crUpPer  : C.crDownPer;
+  const d = (mode==='scaled' && per>0) ? pts*Math.ceil(owedNow(p)/per) : pts;
+  p.cr = Math.max(C.crFloor, Math.min(C.crCap, p.cr+d));
 }
 
-// How much money this particular lender currently has out to this particular
-// borrower — added up across every active loan between the two of them.
-//
-// This is what the ₹3,000 cap is measured against. Note it is about a PAIR
-// of people: the same lender can have far more than ₹3,000 out in total,
-// just not to any single borrower.
-function exposureBetween(lender, borrower) {
-  return borrower.loans
-    // keep only loans that are still running AND came from this lender
-    .filter(l => l.status === 'active' && l.lenderId === lender.id)
-    // add up what is still owed on them ("reduce" means "add up into one number")
-    .reduce((sum, l) => sum + l.remainingPrincipal, 0);
-}
+/* ================= the engine =================
+   The clock is resumable. createRun() builds the starting world,
+   stepWeek() advances it exactly one week, and nothing else moves
+   time forward. That is what lets the page step by 1, 4 or 48 weeks.
+   ============================================== */
+/* Weekly totals that get averaged across repetitions in snapshot(). */
+const ACC=['made','madeValue','blocked','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind'];
 
-/* =========================================================================
-   4. SIMULATION SETUP
-========================================================================= */
-
-// Creates the starting population. Everyone begins identical: same credit
-// score, no loans taken, no money lent out. Returns the finished list.
-//
-// Note every user has BOTH a borrower side and a lender side. There are no
-// separate "lenders" in this model — the same 100 people do both.
-function buildUsers() {
-  const arr = [];
-
-  // Repeat once per user. "i" counts 0, 1, 2... up to numUsers - 1.
-  for (let i = 0; i < CONFIG.numUsers; i++) {
-    arr.push({
-      id: i + 1,                        // 1, 2, 3... the number shown on screen
-      score: CONFIG.startingScore,      // everyone starts at 100 by default
-
-      // --- their situation ---
-      freshJoiner: true,      // true until they take their very first loan.
-                              // Lets us tell "at 100 because they just joined"
-                              // apart from "at 100 through good history".
-      cleanWeeksStreak: 0,    // how many weeks in a row without defaulting.
-                              // Reaching 52 earns the clean-year bonus.
-      weekHadMiss: false,     // temporary marker, reset at the start of each
-                              // week; records whether they defaulted this week
-
-      // --- their borrowing ---
-      loans: [],              // every loan this user has TAKEN OUT.
-                              // Each entry is a loan object created in issueLoan().
-      totalBorrowed: 0,       // total principal they have ever borrowed
-
-      // --- their lending ---
-      lentOut: 0,             // principal currently out with other people.
-                              // Goes up when they fund a loan, down as it is repaid.
-      totalLent: 0,           // total principal they have ever put out
-      loansFunded: 0,         // how many loans they have funded for others
-      interestEarned: 0,      // interest actually RECEIVED (not merely scheduled)
-      principalLostAsLender: 0, // money lost when a borrower was written off
-    });
-  }
-
-  return arr;
-}
-
-// Starts the simulation over from week 0. Called on page load, on Reset, and
-// on Apply & Reset. Wipes all the state variables and rebuilds the users.
-function resetSim() {
-  users = buildUsers();
-  week = 0;
-  history = [];
-  eventLog = [];
-  cumulativeLost = 0;
-  cumulativeInterest = 0;
-
-  // COLD START: week 0 has nobody holding a loan. The platform builds up from
-  // nothing as users choose to borrow week by week.
-  //
-  // One consequence worth knowing: week 1 can never produce a default. A
-  // default means missing a payment on a loan you already hold, and new loans
-  // are only issued at the END of each week (see stepWeek), so the first loans
-  // are not tested until week 2.
-
-  // Record a week-0 snapshot so the charts have a starting point at x = 0.
-  recordHistory({ defaults: 0, writeOffs: 0, defaultingUsers: 0,
-                writeOffUserIds: new Set(), interestPaid: 0, missDetail: [] });
-
-  renderAll();   // redraw everything on screen
-}
-
-/* =========================================================================
-   5. WEEKLY STEP  —  the core of the simulation
-   Everything in this section describes what happens inside a single week.
-   stepWeek() at the bottom is the conductor; the functions above it are the
-   individual jobs it calls.
-========================================================================= */
-// Find a lender willing to fund this borrower. A lender is ruled out only
-// if funding this loan would push their exposure to THIS borrower past the
-// per-pair cap; their total book is unlimited.
-// Tries to find somebody willing and able to fund this borrower's loan.
-// Returns that person, or null if nobody suitable turned up.
-//
-// This matters because money does not appear from nowhere in this model:
-// every loan needs a real counterparty. If no lender is found, the loan
-// simply does not happen — which is realistic, and shows up in the log as
-// an "unfunded" event.
-//
-// The search is deliberately not exhaustive. It tries a handful of people
-// at random rather than scanning everyone, which mimics a borrower asking
-// around rather than having perfect knowledge of the whole market.
-function findLender(borrower, amountNeeded) {
-
-  // Ask up to maxLenderAttempts people (5 by default).
-  for (let attempt = 0; attempt < CONFIG.maxLenderAttempts; attempt++) {
-    const candidate = pick(users);   // pick somebody at random
-
-    // Rule out this candidate for any of three reasons.
-    // "continue" means: skip this one, go round the loop and try another.
-
-    // 1. You cannot lend money to yourself.
-    if (candidate.id === borrower.id) continue;
-
-    // 2. Would this push what they already have out to THIS borrower past
-    //    the ₹3,000 pair cap? Note their total book is unlimited — only
-    //    their exposure to this one person is capped.
-    if (exposureBetween(candidate, borrower) + amountNeeded > CONFIG.maxExposurePerPair) continue;
-
-    // 3. Do they feel like lending? lenderWillingness of 0.7 means they
-    //    agree 70% of the time. Math.random() gives a number from 0 to 1,
-    //    so "greater than 0.7" happens about 30% of the time.
-    if (Math.random() > CONFIG.lenderWillingness) continue;
-
-    // Passed all three checks — this is our lender.
-    return candidate;
-  }
-
-  // Ran out of attempts without finding anyone.
-  return null;
-}
-
-// Offers this user the chance to take out a new loan this week.
-// Called once per user per week. Most of the time nothing happens.
-function issueLoan(user) {
-
-  // GATE 1: is their credit score too low to borrow at all?
-  // "return" means stop here and do nothing further.
-  if (user.score < CONFIG.lockoutThreshold) return;
-
-  // GATE 2: do they even want a loan this week?
-  // weeklyBorrowProbability of 0.12 means yes about 12% of the time.
-  // This is an independent coin flip for each person, so the number of new
-  // loans varies from week to week rather than being a fixed quota.
-  if (Math.random() > CONFIG.weeklyBorrowProbability) return;
-
-  // --- decide the shape of the loan -------------------------------------
-
-  // How long to repay over: 2, 4, 6, 8, 10 or 12 months, picked at random.
-  const tenureMonths = pick(CONFIG.loanTenuresMonths);
-  // A tenure of zero weeks would divide by zero when working out the weekly
-  // instalment, giving Infinity. Force at least one week.
-  const tenureWeeks = Math.max(1, Math.round(tenureMonths * CONFIG.weeksPerMonth));
-
-  // How much they ask for: a random amount in the request range.
-  // Nothing trims this figure — the ONLY limit in the model is the per-pair
-  // exposure cap, which is checked when we look for a lender below.
-  const principal = Math.round(rand(CONFIG.loanRequestMin, CONFIG.loanRequestMax));
-
-  // --- find someone to fund it ------------------------------------------
-  const lender = findLender(user, principal);
-
-  // Nobody available. Record the failed attempt and stop — no loan happens.
-  if (!lender) {
-    log('unfunded', user.id,
-      `wanted ₹${principal.toLocaleString('en-IN')} — no lender found under the per-pair cap`);
-    return;
-  }
-
-  // --- work out the money -----------------------------------------------
-
-  // Interest rate, from the tenure and their credit score.
-  const rate = getBaseInterestRate(user.score, tenureMonths);
-
-  // Total interest across the whole loan.
-  //   principal x rate x (how many years the loan runs for)
-  // A 6-month loan runs for half a year, hence tenureMonths / 12.
-  //
-  // Worked example: ₹1,200 over 6 months at 16%
-  //   totalInterest    = 1200 x 0.16 x 0.5 = ₹96
-  //   totalRepayable   = 1200 + 96         = ₹1,296
-  //   weeklyInstalment = 1296 / 24 weeks   = ₹54
-  //     ...of which ₹50 is principal (1200/24) and ₹4 is interest (96/24)
-  const totalInterest = principal * (rate / 100) * (tenureMonths / 12);
-  const totalRepayable = principal + totalInterest;
-
-  // --- create the loan and attach it to the borrower --------------------
-  user.loans.push({
-    lenderId: lender.id,
-    principal,
-    remainingPrincipal: principal,
-    tenureWeeks,
-    weeklyInstalment: totalRepayable / tenureWeeks,   // what the borrower pays each week
-    weeklyPrincipal: principal / tenureWeeks,          // ...the principal part of it
-    weeklyInterest: totalInterest / tenureWeeks,       // ...the interest part of it
-    totalInterest,          // interest owed across the whole loan
-    totalRepayable,         // principal + interest
-    interestPaid: 0,        // interest handed over so far (starts at zero)
-    interestRate: rate,
-    consecutiveMisses: 0,   // unbroken run of misses; ANY on-time payment resets
-                            // this to 0. Reaching 3 writes the loan off.
-    status: 'active',       // 'active' -> later becomes 'completed' or 'written_off'
-    startWeek: week,
-  });
-
-  user.totalBorrowed += principal;   // "+=" means "add this to the running total"
-
-  // --- move the money from lender to borrower ---------------------------
-  // The lender's capital is now tied up in this loan. It comes back to them
-  // week by week as the borrower repays, or is lost if the loan is written off.
-  lender.lentOut += principal;
-  lender.totalLent += principal;
-  lender.loansFunded++;              // "++" means "add one"
-
-  // Once someone has borrowed even once they are no longer a fresh joiner.
-  // We note whether they WERE fresh before flipping it, so the log line can
-  // say "first loan".
-  const wasFresh = user.freshJoiner;
-  user.freshJoiner = false;
-
-  log('loan', user.id,
-    `borrows ₹${principal.toLocaleString('en-IN')} from User ${lender.id} ` +
-    `over ${tenureMonths}mo at ${rate.toFixed(1)}%` +
-    (wasFresh ? ' — first loan' : ''),
-    lender.id);
-}
-
-// Docks a user's credit score because they defaulted this week.
-// Called ONCE per person per week, no matter how many loans they missed on.
-function applyDefaultPenalty(user) {
-  if (user.score <= 100) {
-    // Ordinary case: lose 10 points.
-    // Math.max(0, ...) stops the score going below zero.
-    user.score = Math.max(0, user.score - CONFIG.defaultPenaltyAtOrBelow100);
-  } else {
-    // Above 100 you had earned extra trust, and defaulting costs you all of
-    // it at once: the score drops straight to 90 rather than sliding by 10.
-    user.score = CONFIG.defaultPenaltyDropToAbove100;
-  }
-
-  // Any default breaks their clean run, so the count toward the yearly
-  // bonus goes back to zero.
-  user.cleanWeeksStreak = 0;
-}
-
-// Rewards a user for a week in which they paid everything due.
-// Also called ONCE per person per week — not once per loan they hold.
-// (That symmetry matters: rewarding per loan would mean someone juggling
-// three loans earned +15 a week while risking only -10, making it profitable
-// to borrow more.)
-function applyOnTimeReward(user) {
-  // The weekly reward stops at the ceiling — but never let it exceed the
-  // absolute cap either. (If someone sets the ceiling ABOVE the cap in the
-  // config panel, the ceiling alone would let scores climb past the cap.)
-  const limit = Math.min(CONFIG.scoreCeiling, CONFIG.scoreCap);
-  if (user.score < limit) {
-    user.score = Math.min(limit, user.score + CONFIG.onTimeReward);
-  }
-  // Getting ABOVE 100 is not done here. It needs a full clean year, which is
-  // tracked week by week in stepWeek() using cleanWeeksStreak.
-}
-
-// Handles ONE loan for ONE week: either the payment is made, or it is missed.
-//
-// Note this function does NOT decide whether the payment was missed. That
-// decision is made once per PERSON in stepWeek() and handed down here, which
-// is why a borrower who defaults misses every loan they hold that week —
-// somebody short of cash is short of cash for all their lenders at once.
-//
-//   user        = the borrower
-//   loan        = the specific loan being processed
-//   weeklyStats = a scratchpad tallying this week's totals
-//   missed      = true if this borrower defaulted this week
-function processLoan(user, loan, weeklyStats, missed) {
-
-  // Loans already finished or written off need no further handling.
-  if (loan.status !== 'active') return;
-
-  // Find the person who funded this loan, so we can credit or debit them.
-  const lender = users.find(u => u.id === loan.lenderId);
-
-  if (missed) {
-    /* ---------- THE PAYMENT WAS MISSED ---------------------------------- */
-
-    loan.consecutiveMisses++;      // extend this loan's unbroken run of misses
-    user.weekHadMiss = true;       // mark the person as having defaulted
-    weeklyStats.defaults++;        // count it toward this week's chart total
-
-    // Remember how deep this loan's run is, so stepWeek can summarise all of
-    // this borrower's misses in a single log line rather than one per loan.
-    weeklyStats.missDetail.push(loan.consecutiveMisses);
-
-    // Three misses IN A ROW and the lender gives up on the loan.
-    if (loan.consecutiveMisses >= CONFIG.consecutiveMissesForWriteOff) {
-      loan.status = 'written_off';
-
-      // Whatever principal was still outstanding is gone for good.
-      cumulativeLost += loan.remainingPrincipal;
-      weeklyStats.writeOffs++;                    // count the LOAN
-      weeklyStats.writeOffUserIds.add(user.id);   // and note the PERSON
-                                                  // (a Set ignores duplicates,
-                                                  //  so one person losing three
-                                                  //  loans still counts once)
-
-      if (lender) {
-        // The money leaves the lender's books. Note their lentOut goes down:
-        // they are not permanently blocked from lending again, they have
-        // simply lost this capital.
-        lender.lentOut = Math.max(0, lender.lentOut - loan.remainingPrincipal);
-        lender.principalLostAsLender += loan.remainingPrincipal;
-      }
-
-      log('writeoff', user.id,
-        `written off — ₹${Math.round(loan.remainingPrincipal).toLocaleString('en-IN')} ` +
-        `lost by User ${loan.lenderId}`,
-        loan.lenderId);
-    }
-
-    // IMPORTANT: notice what does NOT happen above. remainingPrincipal is
-    // left untouched, so the balance simply stays where it was and the loan
-    // finishes one week later than planned. A missed week delays the loan
-    // rather than adding a penalty charge. Miss three weeks (not in a row)
-    // and the loan takes three extra weeks; the total interest is unchanged.
-
-  } else {
-    /* ---------- THE PAYMENT WAS MADE ------------------------------------ */
-
-    loan.consecutiveMisses = 0;    // paying on time wipes out the run of misses
-
-    // The borrower hands over weeklyInstalment. We split it: the principal
-    // part reduces what they owe, the interest part is the lender's income.
-    //
-    // Why Math.min? Computers cannot store most decimals exactly. Dividing
-    // ₹1,364 into 24 weekly parts gives 56.833333333333336, and subtracting
-    // that 24 times leaves 0.000000000000099 rather than a clean zero. On the
-    // last payment the balance can therefore sit a hair BELOW a full
-    // instalment. Taking the smaller of the two means we never subtract more
-    // than is actually owed, so the balance can never go negative.
-    //
-    // Without this guard, roughly 550 loans in a 120-week run would finish
-    // holding a balance like -0.00000000000216 instead of 0 — invisible on
-    // screen, but it would quietly poison the totals and make "amount owed"
-    // a negative number.
-    const payment = Math.min(loan.weeklyPrincipal, loan.remainingPrincipal);
-    loan.remainingPrincipal -= payment;
-
-    if (lender) {
-      // Principal flows back to the lender, freeing up their capital.
-      lender.lentOut = Math.max(0, lender.lentOut - payment);
-
-      // Interest is counted as earned only NOW, when it is actually paid —
-      // never when it is merely scheduled. A missed week costs the lender
-      // this income as well as delaying their principal.
-      loan.interestPaid += loan.weeklyInterest;
-      lender.interestEarned += loan.weeklyInterest;
-      weeklyStats.interestPaid += loan.weeklyInterest;
-    }
-
-    // Is the loan fully repaid? We compare against a tiny number rather than
-    // exactly 0 because dividing money into weekly parts leaves microscopic
-    // rounding dust (0.0000001 style), which would otherwise never equal zero.
-    if (loan.remainingPrincipal <= 0.0001) {
-      loan.status = 'completed';
-      log('repaid', user.id,
-        `repays loan in full to User ${loan.lenderId} — ` +
-        `₹${loan.principal.toLocaleString('en-IN')} cleared`,
-        loan.lenderId);
+/* BUILDS THE STARTING WORLD - week 0.
+   Everyone begins with an empty pillow bank, a rating of 100 and no
+   loans. keepDetail is true only for the first repetition; the others
+   skip per-person history to keep memory down, which is why the
+   Individuals page always shows repetition one. */
+function createRun(C, seed, keepDetail){
+  const S = { C, rng:mulberry32(seed>>>0), people:[], idx:{}, allLoans:[], weekly:[],
+              cumPaid:0, cumEarned:0, loanSeq:0, week:0, keepDetail,
+              cats: CATS.slice() };
+  let pid=0;
+  for(const k of S.cats){
+    const plan = makeSubtypes(C.perCategory);
+    const seen = {};
+    for(const sp of plan){
+      const code = k + (sp.riskTaker?'2':'1') + TDIGIT[sp.prefTenure];
+      seen[code]=(seen[code]||0)+1;
+      const p = {
+        id:pid, cat:k, code, name:code+'-'+seen[code],
+        riskTaker: sp.riskTaker, prefTenure: sp.prefTenure,
+        pb:0, cr:C.crStart, biasOn:false, inDefault:false,
+        loans:[], given:[], interestPaid:0, interestEarned:0,
+        loansTaken:0, loansGiven:0, borrowed:0, lent:0,
+        paid:0, missed:0, weeksBehind:0, refused:0,
+        pbSeries:[], crSeries:[], ipSeries:[], ieSeries:[], defSeries:[], lockSeries:[], log:[]
+      };
+      S.people.push(p); S.idx[pid]=p; pid++;
     }
   }
+  return S;
 }
 
-// Advances the simulation by one week. This is the conductor: it decides who
-// defaults, then walks through every user doing the same five jobs for each.
-//
-// ORDER OF EVENTS IN A WEEK
-//   1. choose exactly who defaults this week
-//   2. for each user: process every loan they hold (pay or miss)
-//   3. apply one score penalty or one score reward to that user
-//   4. update their clean-year streak and lockout status
-//   5. offer them the chance to take a NEW loan
-//   6. once everyone is done, record the week's totals for the charts
-function stepWeek() {
-  week++;
+/* The repayment schedule is fixed when the loan is contracted. Interest is
+   the interest of the loan period and nothing else: missing an instalment
+   does not enlarge it, and nothing accrues once the term has run out. */
+/* ==================================================================
+   THE REPAYMENT SCHEDULE - fixed the moment the loan is contracted.
+   ------------------------------------------------------------------
+   This is what makes interest the interest OF THE LOAN PERIOD and
+   nothing else. The whole schedule of weekly (principal, interest)
+   pairs is computed once, up front, and billed from thereafter.
+   Consequences, both deliberate:
+     - missing instalments does NOT increase the interest owed; the
+       same amounts simply land in arrears instead of being paid
+     - once the term runs out, nothing further accrues at all
+   Reducing balance: interest on what is still owed that week.
+   Flat: interest on the original amount every week.
+   The final week's principal is whatever is left, so the schedule
+   always sums to exactly the amount borrowed.
+   ================================================================== */
+function buildSchedule(amt, r, tenure, emi, mode){
+  const sched=[]; let bal=amt;
+  for(let k=0;k<tenure;k++){
+    const iDue = (mode==='flat' ? amt : bal) * r;
+    const pDue = (k===tenure-1) ? bal : Math.min(Math.max(0, emi - iDue), bal);
+    sched.push({p:pDue, i:iDue}); bal -= pDue;
+  }
+  return sched;
+}
+/* Only called when principal is paid down EARLY. The remaining weeks
+   are re-amortised on the smaller balance, same rate, same number of
+   weeks left - so paying early genuinely reduces the interest still to
+   come, and the weekly amount drops. Without this the frozen schedule
+   would keep billing the original figures and over-collect. */
+function reschedule(L, C){
+  const k = L.tenure - L.schedLeft, left = L.schedLeft;
+  if(left<=0) return;
+  const bal = Math.max(0, L.outstanding - L.arrP);
+  const emi = (C.irMode==='flat')
+    ? (bal + bal*L.r*left)/left
+    : (L.r>0 ? bal*L.r/(1-Math.pow(1+L.r,-left)) : bal/left);
+  const fresh = buildSchedule(bal, L.r, left, emi, C.irMode);
+  for(let i=0;i<left;i++) L.sched[k+i]=fresh[i];
+  L.emi = emi;
+}
+/* What this loan asks for this week: just reads the frozen schedule.
+   schedLeft counts down every week the loan is billed, whether or not
+   the borrower actually paid, so the position in the schedule is
+   tenure - schedLeft. Past the end of the term it returns nothing. */
+function instalment(L, C){
+  const k = L.tenure - L.schedLeft;
+  const s = L.sched[k];
+  return s ? {pDue:s.p, iDue:s.i} : {pDue:0, iDue:0};
+}
 
-  // A scratchpad for this week's totals. Filled in as we go, then handed to
-  // recordHistory() at the end so the charts can plot it.
-  // A scratchpad for this week's totals. Two different things get counted:
-  //   defaults / writeOffs        = how many LOANS were affected
-  //   defaultingUsers / writeOffUserIds = how many PEOPLE were affected
-  // They differ because one person carrying four loans misses four
-  // instalments in a single week.
-  const weeklyStats = {
-    defaults: 0, writeOffs: 0,          // loan counts
-    defaultingUsers: 0,                 // people who defaulted
-    writeOffUserIds: new Set(),         // people who had a loan written off
-    interestPaid: 0, missDetail: [],
+/* ==================================================================
+   ONE WEEK. This is the only function that moves time forward, which
+   is what lets the page step by 1, 4 or 48 weeks and keep its state.
+   The six numbered stages below run in the order the specification
+   sets out: surplus, then borrowing, then repayment, then status.
+   ================================================================== */
+function stepWeek(S){
+  const C=S.C, rng=S.rng, people=S.people, idx=S.idx, allLoans=S.allLoans;
+  const w = ++S.week;
+  const note = S.keepDetail ? (p,txt)=>{ if(p.log.length<900) p.log.push({w,txt}); } : ()=>{};
+
+  /* ---- STAGE 1: WEEKLY SURPLUS OR DEFICIT -------------------------
+     Everyone draws a whole-rupee amount uniformly between their group's
+     minimum and maximum, and it lands in the pillow bank.
+     The BIAS is the rescue behaviour: a person whose rating has fallen
+     below their group's trigger AND who is currently in default starts
+     earning more. It shifts BOTH ends of the range, so group A's
+     -2000..+2000 becomes -1000..+3000. Once switched on it stays on
+     until they return to regular status (turned off in stage 5).
+     Groups C and E have a bias of 0, so they never rescue themselves.
+     ------------------------------------------------------------------ */
+  for(const p of people){
+    const cc=C.cat[p.cat];
+    if(cc.bias>0 && p.cr<cc.biasCR && p.inDefault) p.biasOn=true;
+    const b = p.biasOn?cc.bias:0;
+    p.pb += ri(rng, cc.min+b, cc.max+b);
+  }
+
+  /* ---- STAGE 2: WHAT FALLS DUE THIS WEEK --------------------------
+     Every open loan still inside its term is asked what it wants, and
+     the answers are FROZEN here, before any borrowing happens. Two
+     consequences worth knowing:
+       - a loan taken out today is not billed today; its first
+         instalment falls due next week
+       - money borrowed in stage 3 can be used to pay these instalments
+         in stage 4, which is the order the specification requires
+     `lendable` then works out how much a would-be lender can safely
+     part with: their balance, down to their own borrow threshold, less
+     what they themselves owe this week and any arrears, rounded down to
+     a whole loan size. That is why a lender can never lend themselves
+     into needing to borrow.
+     ------------------------------------------------------------------ */
+  const dues=new Map();
+  for(const L of allLoans){
+    if(!L.open || L.schedLeft<=0) continue;
+    const d = instalment(L, C);
+    if(!dues.has(L.bId)) dues.set(L.bId,[]);
+    dues.get(L.bId).push({L, pDue:d.pDue, iDue:d.iDue});
+  }
+  const dueTotal = id => (dues.get(id)||[]).reduce((s,d)=>s+d.pDue+d.iDue,0);
+  const step = C.amounts[0];
+  const lendable = l => {
+    if(l.pb <= C.lendAbove) return 0;
+    const free = l.pb - C.borrowBelow - dueTotal(l.id) - arrearsOf(l);
+    return free<=0 ? 0 : Math.floor(free/step)*step;
   };
 
-  /* ---- STEP 1: choose exactly who defaults this week -------------------
-     weeklyDefaultRate is a SHARE, not a per-person chance. With 95 active
-     borrowers at 0.10, exactly 10 default — never 8, never 13. WHO defaults
-     is random; HOW MANY is arithmetic.
+  /* ---- STAGE 3: THE MARKETPLACE -----------------------------------
+     Everyone at or below -1000 must borrow, in random order. Each gets
+     at most one loan per week. They pass four gates in turn:
+       rating >= 50, loans held under the band limit, room under the
+       Rs10,000 ceiling, and then a lender must actually be found.
+     `blocked` counts refusals by the rules; `unfunded` counts requests
+     that reached the market but found nobody with money spare. Both
+     recur weekly for the same person while they stay short, so high
+     percentages mean repeat asks, not distinct people.
+     ------------------------------------------------------------------ */
+  let made=0, madeValue=0, blocked=0, unfunded=0, unfundedValue=0;
+  const borrowers = shuffle(people.filter(p=>p.pb <= C.borrowBelow), rng);
+  for(const b of borrowers){
+    const need = C.borrowBelow - b.pb;
+    const openLoans = b.loans.filter(L=>L.open);
+    /* gate 1 - rating too low to borrow at all */
+    if(b.cr < C.crNoLoan){ blocked++; b.refused++; note(b,'Needed '+rupees0(need)+' but the rating of '+b.cr.toFixed(0)+' is below '+C.crNoLoan+', so no borrowing allowed.'); continue; }
+    /* gate 2 - already holding the most loans this rating allows */
+    if(openLoans.length >= maxLoansFor(b.cr,C)){ blocked++; b.refused++; note(b,'Needed '+rupees0(need)+' but already holds '+openLoans.length+' loans, the limit at a rating of '+b.cr.toFixed(0)+'.'); continue; }
+    const room = C.maxPrincipal - openLoans.reduce((s,L)=>s+L.outstanding,0);
+    /* gate 3 - no headroom left under the total borrowing ceiling */
+    if(room < C.amounts[0]){ blocked++; b.refused++; note(b,'Needed '+rupees0(need)+' but is already at the '+rupees0(C.maxPrincipal)+' borrowing ceiling.'); continue; }
+    /* any amount that leaves the pillow bank inside the band, and nothing
+       else enters into it: obligations due this week do not widen the choice */
+    let cands = C.amounts.filter(a=>a<=room &&
+                 (b.pb+a)>=C.borrowBelow && (b.pb+a)<=C.lendAbove);
+    /* only reachable on a shortfall deeper than the largest loan */
+    if(!cands.length) cands = C.amounts.filter(a=>a<=room);
+    if(!cands.length){ blocked++; b.refused++; continue; }
 
-     (Trade-off worth knowing: this removes week-to-week variation in the
-     default count entirely. Quiet weeks and bad weeks no longer happen.)   */
+    /* pick one of the qualifying sizes at random. At -1200 the choices
+       are Rs1000 (landing at -200) and Rs2000 (landing at +800); both
+       are equally likely. */
+    const wanted = cands[Math.floor(rng()*cands.length)];
+    const tenure = nearestTenure(b.prefTenure, C.tenures);
+    const rate   = irFor(b.cr, C);
+    const ladder = cands.filter(a=>a<=wanted).sort((x,y)=>y-x);
 
-  // Only people who currently hold a loan can miss a payment on one.
-  const activeBorrowers = users.filter(u => u.loans.some(l => l.status === 'active'));
-  // Clamped to the range 0..(how many borrowers there actually are). Without
-  // this, typing 10 instead of 0.1 in the config panel asks for ten times more
-  // defaulters than exist, and the shuffle below runs off the end of the list
-  // and crashes. A negative rate would ask for a negative number of them.
-  const numDefaulting = Math.max(0, Math.min(
-    activeBorrowers.length,
-    Math.round(activeBorrowers.length * (CONFIG.weeklyDefaultRate || 0))
-  ));
-
-  // Now pick that many of them, fairly. This is a partial Fisher-Yates
-  // shuffle: for each slot we want to fill, swap in a randomly chosen person
-  // from the not-yet-picked remainder. Doing it this way means everyone has
-  // an equal chance regardless of their position in the list — picking "the
-  // first N after a naive shuffle" is where bias usually creeps in.
-  const pool = activeBorrowers.slice();          // work on a copy, not the original
-  for (let i = 0; i < numDefaulting; i++) {
-    const j = i + Math.floor(Math.random() * (pool.length - i));
-    [pool[i], pool[j]] = [pool[j], pool[i]];     // swap the two entries
+    let placed=false;
+    for(const amt of ladder){
+      /* who will lend: not yourself, and either a risk-taker (2nd digit
+         of the code is 2, applies no test) or a cautious lender whose
+         test the borrower passes. One lender funds the whole loan -
+         loans are never split between lenders, so if nobody can cover
+         the amount the borrower steps down to a smaller one. */
+      const pool = shuffle(people.filter(l => l.id!==b.id && (l.riskTaker || b.cr>=C.riskyBelow) && lendable(l)>=amt), rng);
+      if(!pool.length) continue;
+      const l = pool[0];
+      /* the quoted rate is an annual figure by default, so a 20% loan
+         over 4 weeks costs very little. Reading it per month, or as one
+         charge for the term, moves the results more than any other
+         single parameter. */
+      const periodWeeks = C.irPeriod==='year' ? 52 : (C.irPeriod==='month' ? 52/12 : tenure);
+      const r = (rate/100)/periodWeeks;
+      /* EMI - the constant weekly payment. Interest comes out of it
+         first and whatever is left goes against the principal. */
+      const emi = (C.irMode==='flat')
+        ? (amt + amt*r*tenure)/tenure
+        : (r>0 ? amt*r/(1-Math.pow(1+r,-tenure)) : amt/tenure);
+      const L = { id:++S.loanSeq, bId:b.id, lId:l.id, principal:amt, outstanding:amt,
+                  tenure, rate, r, emi, sched:buildSchedule(amt, r, tenure, emi, C.irMode),
+                  schedLeft:tenure, arrP:0, arrI:0, arrN:0, open:true, week:w };
+      allLoans.push(L); b.loans.push(L); l.given.push(L);
+      b.pb += amt; l.pb -= amt;
+      b.loansTaken++; l.loansGiven++; b.borrowed+=amt; l.lent+=amt;
+      made++; madeValue+=amt;
+      note(b,'Borrowed '+rupees0(amt)+' from '+l.name+' over '+tenure+' weeks at '+rate.toFixed(1)+'%, repaying '+rupees0(emi)+' a week.');
+      note(l,'Lent '+rupees0(amt)+' to '+b.name+' at '+rate.toFixed(1)+'%.');
+      placed=true; break;
+    }
+    if(!placed){ unfunded++; unfundedValue+=need; b.refused++; note(b,'Needed '+rupees0(need)+' but no lender had the money spare.'); }
   }
-  // Keep just the ids of the chosen ones, for fast lookup below.
-  const defaultingIds = new Set(pool.slice(0, numDefaulting).map(u => u.id));
-  weeklyStats.defaultingUsers = defaultingIds.size;   // people, not loans
 
-  /* ---- STEPS 2-5: walk through every user ---------------------------- */
-  for (const user of users) {
-
-    user.weekHadMiss = false;   // clear last week's marker
-
-    // Record two facts BEFORE anything changes, so we can compare afterwards.
-    const hadActiveLoan = user.loans.some(l => l.status === 'active');
-    const wasLockedOut = user.score < CONFIG.lockoutThreshold;
-
-    // Were they picked to default? If so they miss EVERY instalment due this
-    // week — somebody who cannot pay cannot pay any of their lenders.
-    const userMissesThisWeek = defaultingIds.has(user.id);
-
-    // STEP 2: process each of their loans with that same decision.
-    for (const loan of user.loans) {
-      processLoan(user, loan, weeklyStats, userMissesThisWeek);
-    }
-
-    // STEP 3: one score change per person per week — never one per loan.
-    if (hadActiveLoan) {
-      if (userMissesThisWeek) {
-        const before = user.score;
-        applyDefaultPenalty(user);
-
-        // Write ONE summary line covering all the instalments they missed.
-        // weeklyStats.missDetail holds each affected loan's run-of-misses
-        // count, so "worst streak" shows how close their most at-risk loan
-        // is to being written off.
-        const streaks = weeklyStats.missDetail;
-        const n = streaks.length;
-        const worst = n ? Math.max(...streaks) : 0;
-        log('miss', user.id,
-          `defaults — misses ${n} instalment${n === 1 ? '' : 's'} ` +
-          `(worst streak ${worst} of ${CONFIG.consecutiveMissesForWriteOff}) — ` +
-          `score ${before} → ${user.score}`);
+  /* ---- STAGE 4: REPAYMENT -----------------------------------------
+     Three passes over each person, in this order:
+       (a) this week's instalments - paid in full if the pillow bank can
+           cover them and stay at or above zero, otherwise the whole
+           instalment moves to arrears and arrN counts one more missed
+       (b) the arrears sweep - only for groups that regularise (A, B, D).
+           Clearing arrears credits the rating once per instalment made
+           good, which is the ONLY way a rating ever goes up
+       (c) spare cash - off by default. When switched on it is a
+           waterfall: overdue interest, then overdue principal, then the
+           principal still standing. Paying principal early re-amortises
+           the loan but earns no rating credit
+     ------------------------------------------------------------------ */
+  for(const p of shuffle(people.slice(), rng)){
+    const cc = C.cat[p.cat];
+    const myDues = dues.get(p.id) || [];
+    for(const d of myDues){
+      const L=d.L, total=d.pDue+d.iDue;
+      /* all or nothing: a pillow bank of Rs900 against a Rs1000
+         instalment pays nothing and the whole thing goes to arrears.
+         'pay' groups settle regardless and let the balance go negative. */
+      const findsTheMoney = (p.pb-total) >= 0 || cc.shortfall==='pay';
+      if(findsTheMoney){
+        p.pb -= total; L.outstanding -= d.pDue;
+        const l = idx[L.lId]; l.pb += total; l.interestEarned += d.iDue;
+        p.interestPaid += d.iDue; S.cumPaid += d.iDue; S.cumEarned += d.iDue;
+        /* paying on time is not a rating event: the only way up is to regularise */
+        p.paid++;
       } else {
-        applyOnTimeReward(user);
+        L.arrP += d.pDue; L.arrI += d.iDue; L.arrN++;
+        p.missed++;
+        note(p,'Missed an instalment of '+rupees0(total)+' \u2014 the pillow bank could not cover it.');
       }
+      /* the schedule advances whether or not it was paid, so a loan
+         can reach the end of its term still carrying arrears - it then
+         stays open, holding a loan slot, until someone clears it */
+      L.schedLeft--;
+      if(L.outstanding<=0.5 && L.arrI<=0.5){ L.outstanding=0; L.open=false; note(p,'Finished paying off a loan of '+rupees0(L.principal)+'.'); }
     }
-    weeklyStats.missDetail = [];   // empty the scratchpad for the next user
 
-    /* STEP 4a: the clean-year bonus.
-       Note the condition is "has borrowed at least once" rather than "holds a
-       loan right now". Someone who repaid everything and is sitting debt-free
-       should still be building a clean record — otherwise the best-behaved
-       users could never reach 52 clean weeks and the reward for good conduct
-       would be unreachable. Users who have NEVER borrowed do not accrue,
-       because they have demonstrated nothing.                              */
-    if (!user.weekHadMiss && !user.freshJoiner) {
-      user.cleanWeeksStreak++;
-
-      // "%" gives the remainder after division. When the streak divides
-      // exactly by 52, a full clean year has just been completed.
-      if (user.cleanWeeksStreak % CONFIG.yearInWeeks === 0 && user.score >= CONFIG.scoreCeiling) {
-        const before = user.score;
-        user.score = Math.min(CONFIG.scoreCap, user.score + CONFIG.aboveCeilingRewardPerYear);
-        if (user.score !== before) {   // only log if it actually moved (may be at the cap)
-          log('bonus', user.id, `clean year bonus — score ${before} → ${user.score}`);
+    /* ---- 4b: THE ARREARS SWEEP -------------------------------------
+       Only groups marked as regularising do this. It is the only route
+       out of default in the default configuration, and the only source
+       of upward rating movement anywhere in the model. C and E skip it
+       entirely, which is why their arrears never clear and their loans
+       never close. */
+    const clears = cc.regularise;
+    if(clears){
+      for(const L of p.loans){
+        if(!L.open) continue;
+        const owed = L.arrP+L.arrI;
+        if(owed<=0.5) continue;
+        if(p.pb-owed >= 0 || cc.shortfall==='pay'){
+          p.pb -= owed; L.outstanding -= L.arrP;
+          const l = idx[L.lId]; l.pb += owed; l.interestEarned += L.arrI;
+          p.interestPaid += L.arrI; S.cumPaid += L.arrI; S.cumEarned += L.arrI;
+          const back = L.arrN; L.arrP=0; L.arrI=0; L.arrN=0;
+          for(let i=0;i<back;i++) crMove(p,'up',C);
+          note(p,'Cleared '+rupees0(owed)+' of arrears, recovering '+back+' instalment'+(back===1?'':'s')+'.');
+          if(L.outstanding<=0.5){ L.outstanding=0; L.open=false; }
         }
       }
     }
 
-    // STEP 4b: did they cross the lockout line in either direction this week?
-    const isLockedOut = user.score < CONFIG.lockoutThreshold;
-    if (isLockedOut && !wasLockedOut) {
-      log('lockout', user.id, `locked out — score ${user.score} below ${CONFIG.lockoutThreshold}`);
-    } else if (!isLockedOut && wasLockedOut) {
-      log('unlock', user.id, `back above the lockout line — score ${user.score}`);
+    /* Spare money, at the group's own rate. It goes to arrears first
+       (the week's missed instalment is already sitting there), overdue
+       interest ahead of overdue principal, and only then against the
+       principal still standing. Whatever the pillow bank can cover. */
+    if(rng()<cc.prepay){
+      const order = p.loans.filter(L=>L.open).sort((a,b)=>
+        ((b.arrP+b.arrI)-(a.arrP+a.arrI)) || (a.outstanding-b.outstanding));
+      for(const L of order){
+        if(p.pb<=0) break;
+        const l = idx[L.lId];
+
+        /* tier 1 - arrears */
+        const owed = L.arrP + L.arrI;
+        if(owed>0.5){
+          const pay  = Math.min(p.pb, owed);
+          const iBit = Math.min(pay, L.arrI);
+          const pBit = pay - iBit;
+          p.pb -= pay; l.pb += pay;
+          L.arrI -= iBit; L.arrP -= pBit; L.outstanding -= pBit;
+          l.interestEarned += iBit; p.interestPaid += iBit;
+          S.cumPaid += iBit; S.cumEarned += iBit;
+          /* rating recovers per instalment made good, never more than was lost */
+          const back = Math.floor(L.arrN * (pay/owed) + 1e-9);
+          L.arrN -= back;
+          for(let i=0;i<back;i++) crMove(p,'up',C);
+          note(p,'Paid '+rupees0(pay)+' towards arrears, recovering '+back+' instalment'+(back===1?'':'s')+'.');
+        }
+
+        /* tier 2 - principal, only once that loan's arrears are square */
+        const live = Math.max(0, L.outstanding - L.arrP);
+        if(p.pb>0 && live>0.5 && (L.arrP+L.arrI)<=0.5){
+          const pay = Math.min(p.pb, live);
+          p.pb -= pay; l.pb += pay;
+          L.outstanding -= pay;
+          reschedule(L, C);
+          /* prepaying principal is not a rating event */
+          note(p, pay>=live-0.5
+            ? 'Settled a loan early, paying off '+rupees0(pay)+'.'
+            : 'Paid '+rupees0(pay)+' off the principal ahead of schedule.');
+        }
+
+        if(L.outstanding<=0.5 && L.arrI<=0.5){ L.outstanding=0; L.open=false; L.arrN=0; }
+      }
     }
-
-    // STEP 5: offer them a new loan. Note this happens AFTER their existing
-    // loans were processed, so a loan taken today is not tested until next week.
-    issueLoan(user);
   }
 
-  // STEP 6: snapshot the week for the charts.
-  recordHistory(weeklyStats);
+  /* ---- STAGE 5: STATUS AND THE WEEKLY RATING CHARGE ---------------
+     Anyone with a single rupee overdue is in default. While they are,
+     EVERY instalment still owing charges the rating again, every week,
+     until it is regularised. So the cost of a default scales with how
+     long it stands, not just how often one happens: one instalment left
+     owing for ten weeks costs ten charges, while ten instalments all
+     cleared the same week cost one each.
+     Paying an instalment on time is NOT a rating event. The only way up
+     is regularising, in stage 4b.
+     Coming out of default also switches the rescue bias back off.
+     ------------------------------------------------------------------ */
+  for(const p of people){
+    const wasBehind = p.inDefault;
+    p.inDefault = arrearsOf(p) > 0.5;
+    if(p.inDefault){
+      p.weeksBehind++;
+      /* each instalment still owing costs again, every week, until regularised */
+      const n = missesOf(p);
+      for(let i=0;i<n;i++) crMove(p,'down',C);
+      if(!wasBehind) note(p,'Now behind on payments.');
+      note(p,n+' instalment'+(n===1?'':'s')+' still owing \u2014 rating charged again this week.');
+    }
+    else { if(p.biasOn) note(p,'Back to a clean record; the extra earning effort stops.'); p.biasOn=false; }
+  }
+
+  /* ---- STAGE 6: RECORD THE WEEK -----------------------------------
+     One row per week, with per-archetype sub-totals in rec.by keyed by
+     the three-character code. Everything the charts and tables show is
+     derived from these rows, plus the per-person series below.
+     ------------------------------------------------------------------ */
+  const rec={week:w, made, madeValue, blocked, unfunded, unfundedValue,
+             cumPaid:S.cumPaid, cumEarned:S.cumEarned, outstanding:0, behind:0, by:{}};
+  for(const L of allLoans) if(L.open) rec.outstanding+=L.outstanding;
+  for(const p of people){
+    const b = rec.by[p.code] || (rec.by[p.code]={pb:0,cr:0,def:0,lock:0,ip:0,ie:0,n:0});
+    b.pb+=p.pb; b.cr+=p.cr; b.ip+=p.interestPaid; b.ie+=p.interestEarned; b.n++;
+    if(p.inDefault){ b.def++; rec.behind++; }
+    if(p.cr < C.crNoLoan) b.lock++;
+  }
+  S.weekly.push(rec);
+  if(S.keepDetail) for(const p of people){
+    p.pbSeries.push(p.pb); p.crSeries.push(p.cr);
+    p.ipSeries.push(p.interestPaid); p.ieSeries.push(p.interestEarned);
+    p.defSeries.push(p.inDefault?1:0); p.lockSeries.push(p.cr<C.crNoLoan?1:0);
+  }
 }
 
-// The "+1 Month" button. A month is simply four weeks, so this runs the
-// weekly logic four times and redraws once at the end (redrawing after every
-// week would be wasted work the user never sees).
-function stepMonth() {
-  for (let i = 0; i < CONFIG.weeksPerMonth; i++) stepWeek();
-  renderAll();
+/* A session holds every repeat of the same settings, all on the same clock. */
+/* A session is every repetition of the same settings, all on one clock.
+   Repetition seeds are spaced apart so they are independent runs, and
+   advance() steps them together so the averaged series stay consistent
+   at whatever week the user happens to stop. */
+function newSession(C, seed){
+  const base = seed || (Date.now()>>>0);
+  const runs=[];
+  for(let i=0;i<Math.max(1,C.runs);i++) runs.push(createRun(C, base + i*7919, i===0));
+  return {C, runs, seed:base};
+}
+function advance(sess, weeks){
+  for(const S of sess.runs) for(let i=0;i<weeks;i++) stepWeek(S);
+}
+/* Averages the weekly rows across repetitions for the charts. Counts
+   and money are divided by the number of repetitions; per-archetype
+   figures likewise. detail is always repetition one, which is the only
+   one keeping per-person history. */
+function snapshot(sess){
+  const runs=sess.runs, n=runs.length, len=runs[0].weekly.length;
+  const weekly=[];
+  for(let i=0;i<len;i++){
+    const a={week:i+1, made:0,madeValue:0,blocked:0,unfunded:0,unfundedValue:0,
+             cumPaid:0,cumEarned:0,outstanding:0,behind:0, by:{}};
+    for(const S of runs){
+      const r=S.weekly[i];
+      ACC.forEach(k=>a[k]+=r[k]);
+      for(const c in r.by){
+        const t=a.by[c]||(a.by[c]={pb:0,cr:0,def:0,lock:0,ip:0,ie:0,n:0}), b=r.by[c];
+        t.pb+=b.pb; t.cr+=b.cr; t.def+=b.def; t.lock+=b.lock; t.ip+=b.ip; t.ie+=b.ie; t.n+=b.n;
+      }
+    }
+    ACC.forEach(k=>a[k]/=n);
+    for(const c in a.by){ const t=a.by[c]; t.pb/=n; t.cr/=n; t.def/=n; t.lock/=n; t.ip/=n; t.ie/=n; t.n/=n; }
+    weekly.push(a);
+  }
+  return {detail:runs[0], weekly, cats:runs[0].cats, runs:n, week:runs[0].week};
+}
+/* ==================================================================
+   THE PAGE
+   ================================================================== */
+/* ==================================================================
+   THE PAGE - everything below draws the model, none of it changes it.
+   ================================================================== */
+const COLOR = {A:'#157F4B', B:'#2E6FA7', C:'#B07E00', D:'#D4691E', E:'#A81F2D'};
+const CATNAME = {
+  A:'A \u2014 no wilful default',
+  B:'B \u2014 occasional default, regularises',
+  C:'C \u2014 occasional default, no regularisation',
+  D:'D \u2014 frequent default, regularises',
+  E:'E \u2014 frequent default, no regularisation'
+};
+const TENNAME={'1':'4 weeks','2':'8 weeks','3':'12 weeks'};
+const ARCHDASH={'11':undefined,'12':[7,4],'13':[2,4],'21':[12,5],'22':[1,5],'23':[10,4,2,4]};
+const GROUPINGS={
+  arch:{ keys:c=>c, order:null, name:c=>c, color:c=>COLOR[c[0]], dash:c=>ARCHDASH[c.slice(1)] },
+  cat:{ keys:c=>c[0], order:CATS,
+        name:k=>'Group '+k, color:k=>COLOR[k] },
+  risk:{ keys:c=>c[1], order:['1','2'],
+        name:k=>k==='1'?'Cautious (x1x)':'Risk-taking (x2x)',
+        color:k=>k==='1'?'#2E6FA7':'#D4691E' },
+  tenure:{ keys:c=>c[2], order:['1','2','3'],
+        name:k=>TENNAME[k]+' tenure (xx'+k+')',
+        color:k=>({'1':'#157F4B','2':'#B07E00','3':'#A81F2D'})[k] },
+  catrisk:{ keys:c=>c.slice(0,2), order:null,
+        name:k=>k[0]+(k[1]==='1'?' cautious':' risk-taking'),
+        color:k=>COLOR[k[0]], dash:k=>k[1]==='2'?[7,5]:undefined }
+};
+function groupKeys(W,g){
+  const present=new Set(); Object.keys(W[W.length-1].by).forEach(c=>present.add(g.keys(c)));
+  return (g.order? g.order.filter(k=>present.has(k)) : [...present].sort());
+}
+function groupSeries(W,g,field){
+  return groupKeys(W,g).map(k=>({
+    label:g.name(k),
+    borderColor:g.color(k), backgroundColor:g.color(k),
+    borderDash: g.dash? g.dash(k) : undefined,
+    data: W.map(r=>{
+      let sum=0,n=0,def=0;
+      for(const c in r.by){ if(g.keys(c)!==k) continue; const b=r.by[c]; sum+=b[field]; n+=b.n; def+=b.def; }
+      return COUNTS[field] ? def : (n ? sum/n : 0);
+    })
+  }));
+}
+const CATSHORT={A:'No wilful default',B:'Occasional default, regularises',C:'Occasional default, no regularisation',
+                D:'Frequent default, regularises',E:'Frequent default, no regularisation'};
+const charts = {};
+let LAST = null, LASTC = null;
+const scenarios = [];
+const $ = id => document.getElementById(id);
+
+/* ---------- navigation ---------- */
+$('nav').addEventListener('click', e=>{
+  const b=e.target.closest('button[data-view]'); if(!b) return; show(b.dataset.view);
+});
+document.addEventListener('click', e=>{
+  const b=e.target.closest('[data-goto]'); if(b) show(b.dataset.goto);
+});
+function show(v){
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on', s.id==='view-'+v));
+  document.querySelectorAll('#nav button').forEach(b=>b.setAttribute('aria-current', String(b.dataset.view===v)));
+  window.scrollTo({top:0});
 }
 
-/* =========================================================================
-   6. AGGREGATES
-   Turning the raw user data into the summary numbers the charts and the
-   ledger need. Nothing here changes the simulation; it only measures it.
-========================================================================= */
-
-// Takes a snapshot of the whole platform at the end of a week and appends it
-// to the history list. Everything the charts plot comes from here.
-function recordHistory(weeklyStats) {
-
-  // Total principal still owed across every active loan on the platform.
-  // The nested "reduce" adds up each user's loans, then adds up the users.
-  const outstanding = users.reduce((sum, u) =>
-    sum + u.loans.filter(l => l.status === 'active').reduce((s, l) => s + l.remainingPrincipal, 0), 0);
-
-  // How many people are currently barred from borrowing.
-  const lockedOut = users.filter(u => u.score < CONFIG.lockoutThreshold).length;
-
-  // Average credit score across everyone.
-  // Guard against a population of zero, which would divide by zero and put
-  // NaN into the chart data (NaN spreads and breaks every downstream number).
-  const avgScore = users.length
-    ? users.reduce((s, u) => s + u.score, 0) / users.length
-    : 0;
-
-  // Ask the helper functions below for the rest.
-  const { borrowers: activeBorrowers, lenders: activeLenders } = participationCounts();
-  const { up: netPositive, down: netNegative, flat: netFlat } = netPositionSplit();
-  const lendersHurt = lendersWhoLost();
-
-  // This one accumulates rather than being recalculated: add this week's
-  // interest to the running total.
-  cumulativeInterest += weeklyStats.interestPaid;
-
-  history.push({
-    week,
-    defaults: weeklyStats.defaults,                     // loans missed
-    defaultingUsers: weeklyStats.defaultingUsers,       // people who defaulted
-    writeOffs: weeklyStats.writeOffs,                   // loans written off
-    writeOffUsers: weeklyStats.writeOffUserIds.size,    // people affected
-    avgScore,
-    outstanding,
-    cumulativeLost,
-    lockedOut,
-    cumulativeInterest,
-    activeBorrowers,
-    activeLenders,
-    netPositive,
-    netNegative,
-    netFlat,
-    lendersHurt,
-  });
+/* ---------- the settings form ---------- */
+function fieldEl(f){
+  const d=document.createElement('div');
+  d.className='field'+(f.t==='check'?' check':'');
+  const id='f_'+f.k;
+  let input;
+  if(f.t==='check'){
+    input=document.createElement('input'); input.type='checkbox'; input.id=id;
+  } else if(f.t==='select'){
+    input=document.createElement('select'); input.id=id;
+    f.opts.forEach(o=>{const op=document.createElement('option');op.value=o[0];op.textContent=o[1];input.appendChild(op);});
+  } else {
+    input=document.createElement('input'); input.id=id;
+    input.type = f.t==='text' ? 'text' : 'number';
+    if(f.t==='num'){ input.min=f.min; input.max=f.max; input.step=f.step; }
+  }
+  const lab=document.createElement('label'); lab.htmlFor=id; lab.textContent=f.l;
+  if(f.t==='check'){ d.appendChild(input); const box=document.createElement('div'); box.appendChild(lab); if(f.h){const h=document.createElement('p');h.className='hint';h.textContent=f.h;box.appendChild(h);} d.appendChild(box); }
+  else { d.appendChild(lab); d.appendChild(input); if(f.h){const h=document.createElement('p');h.className='hint';h.textContent=f.h;d.appendChild(h);} }
+  return d;
 }
-
-/* --- the credit-score histogram ---------------------------------------
-   Credit scores cannot take just any value. They move in fixed steps: +5 for
-   a clean week, -10 for a default, +5 for a clean year. That means a score is
-   ALWAYS a multiple of 5 — there is no such thing as a score of 87.
-
-   So the chart should look discrete (separated bars, one per attainable
-   value) rather than like a smooth continuous curve, which would imply
-   values that can never occur.
-
-   Rather than hard-coding "5", we work the step size out from the config, so
-   if you change the reward to 3 or the penalty to 7 the chart adapts.       */
-
-// Greatest common divisor: the largest number that divides both a and b
-// exactly. gcd(10, 5) = 5. It calls itself with smaller numbers until one
-// of them reaches zero — a standard technique called recursion.
-function gcd(a, b) { return b === 0 ? Math.abs(a) : gcd(b, a % b); }
-
-// The step size scores actually move in: the common divisor of every
-// score-changing amount in the config. With the defaults (+5, -10, +5)
-// that comes out as 5.
-function scoreGranularity() {
-  // Every value a score can actually be SET to (not just stepped by) has to
-  // be on this grid, or the histogram's "one bar = one exact score" labelling
-  // goes wrong. That's the step sizes (reward/penalty amounts) AND the
-  // absolute targets a score gets clamped or dropped to.
-  const g = [CONFIG.startingScore, CONFIG.onTimeReward, CONFIG.defaultPenaltyAtOrBelow100,
-             CONFIG.aboveCeilingRewardPerYear, CONFIG.scoreCeiling, CONFIG.scoreCap,
-             CONFIG.defaultPenaltyDropToAbove100]
-    .filter(n => Number.isFinite(n) && n !== 0)
-    .map(Math.abs)
-    .reduce((a, b) => gcd(a, b), 0);
-  return g > 0 ? g : 1;
+function cellInput(f){
+  const id='f_'+f.k;
+  let el;
+  if(f.t==='select'){
+    el=document.createElement('select');
+    f.opts.forEach(o=>{const op=document.createElement('option');op.value=o[0];op.textContent=o[1];el.appendChild(op);});
+  } else {
+    el=document.createElement('input'); el.type='number';
+    el.min=f.min; el.max=f.max; el.step=f.step;
+  }
+  el.id=id; if(f.aria) el.setAttribute('aria-label', f.aria);
+  return el;
 }
-
-// Is each bar holding exactly ONE possible score? If the bar width is 5 and
-// scores move in 5s, then yes — every bar covers a single attainable value,
-// so we draw them separated with gaps. If you widen the bars to 25, each one
-// genuinely covers a range of values, so we draw them touching instead.
-function histogramIsDiscrete() {
-  return CONFIG.scoreHistogramBinSize <= scoreGranularity();
+function tableShell(note){
+  const wrap=document.createElement('div');
+  if(note){ const h=document.createElement('p'); h.className='hint'; h.style.margin='0 0 12px'; h.textContent=note; wrap.appendChild(h); }
+  const sc=document.createElement('div'); sc.className='tablescroll'; sc.style.maxHeight='none';
+  const t=document.createElement('table'); t.className='partable';
+  sc.appendChild(t); wrap.appendChild(sc);
+  return {wrap, t};
 }
-
-// Counts how many users sit in each score band, ready for the bar chart.
-// Returns a list of "bins", each with a low edge, a high edge and a count.
-function scoreDistribution() {
-  // A bin size of 0 (or a blank config box) would make the loop below add
-  // nothing to `lo` each time round, so it would never reach `top` — an
-  // infinite loop that freezes the whole browser tab. Same for a negative
-  // size. Force at least 1.
-  const size = Math.max(1, Math.floor(CONFIG.scoreHistogramBinSize) || 1);
-  const top = Math.max(size, CONFIG.scoreCap || 1);
-  const bins = [];
-
-  // Build the empty bins first: 0-5, 5-10, 10-15 ... up to the cap.
-  for (let lo = 0; lo < top; lo += size) {
-    const hi = Math.min(lo + size, top);
-    bins.push({
-      lo, hi,
-      // Labelling all 25 bars would crowd the axis into an unreadable mess,
-      // so label every other one and leave the rest blank. (The tooltip
-      // still shows the exact value when you hover.)
-      label: (bins.length % 2 === 0) ? String(lo) : '',
-      count: 0,
+function catTable(note){
+  const {wrap,t}=tableShell(note);
+  t.innerHTML='<thead><tr><th>Group</th>'+CATFIELDS.map(f=>'<th>'+f.c+'</th>').join('')+'</tr></thead>';
+  const tb=document.createElement('tbody');
+  CATS.forEach(k=>{
+    const tr=document.createElement('tr');
+    const td0=document.createElement('td');
+    td0.innerHTML='<span class="catchip" style="background:'+COLOR[k]+'">'+k+'</span> '+CATSHORT[k];
+    tr.appendChild(td0);
+    CATFIELDS.forEach(f=>{
+      const td=document.createElement('td');
+      td.appendChild(cellInput(Object.assign({},f,{k:k+f.k, aria:'Group '+k+' \u2014 '+f.c})));
+      tr.appendChild(td);
     });
-  }
-
-  // Now drop each user into the right bin.
-  for (const u of users) {
-    // Which bin? Divide the score by the bar width and round down:
-    // score 87 with width 5 gives 87/5 = 17.4, rounded down to bin 17
-    // (which covers 85-90).
-    let idx = Math.floor(u.score / size);
-
-    // Guard the edges: a score exactly at the cap would otherwise fall past
-    // the last bin, and a negative score past the first.
-    if (idx >= bins.length) idx = bins.length - 1;
-    if (idx < 0) idx = 0;
-
-    bins[idx].count++;
-  }
-
-  return bins;
-}
-
-// Colour each bar by which policy zone the score sits in, so the lockout
-// line and the benefits line are visible on the chart itself.
-function binColour(bin) {
-  if (bin.lo < CONFIG.lockoutThreshold) return '#C1503E';           // locked out
-  if (bin.lo >= CONFIG.benefitsThreshold) return '#46A697';         // benefits unlocked
-  return '#D4A24C';                                                  // ordinary
-}
-
-// How much interest this user has actually HANDED OVER as a borrower.
-// Note this is money that has genuinely changed hands, not interest that is
-// merely scheduled on their open loans.
-function interestPaidBy(u) {
-  return u.loans.reduce((sum, l) => sum + l.interestPaid, 0);
-}
-
-// A user's position on money that has actually moved: interest received as
-// a lender, minus interest paid out as a borrower, minus principal lost to
-// borrowers who were written off. Nothing here is scheduled-but-unpaid —
-// interest counts on both sides only once it changes hands. Principal
-// borrowed/lent is excluded because it cancels over a loan's life.
-function netPositionOf(u) {
-  return u.interestEarned - interestPaidBy(u) - u.principalLostAsLender;
-}
-
-// Split the population by whether they're up or down. Users with exactly
-// zero (nobody who has never touched the platform has anything to settle)
-// are counted separately so the two series don't imply a false 50/50.
-function netPositionSplit() {
-  let up = 0, down = 0, flat = 0;
-  for (const u of users) {
-    const n = netPositionOf(u);
-    if (n > 0.005) up++;
-    else if (n < -0.005) down++;
-    else flat++;
-  }
-  return { up, down, flat };
-}
-
-// Lenders who have taken at least one write-off loss.
-function lendersWhoLost() {
-  return users.filter(u => u.principalLostAsLender > 0).length;
-}
-
-// How many people are currently borrowing, and how many are currently lending.
-//
-// (Side note on a chart that ISN'T here: "capital deployed" was removed,
-// because it is the exact same money as outstanding principal — just counted
-// from the lender's side instead of the borrower's. Two charts showing one
-// number is worse than one.)
-function participationCounts() {
-  const borrowers = users.filter(u => u.loans.some(l => l.status === 'active')).length;
-  const lenders = users.filter(u => u.lentOut > 0).length;
-  return { borrowers, lenders };
-}
-
-/* =========================================================================
-   7. RENDERING
-   Everything from here down is about putting things on screen. None of it
-   changes the simulation — it only displays what the sections above produced.
-   If you are reading to understand the RULES, you can stop here.
-   -------------------------------------------------------------------------
-   RENDERING — settings panel
-========================================================================= */
-// Builds the config panel's input boxes automatically from SETTINGS_FIELDS,
-// so adding a line to that list is all it takes to expose a new setting.
-function renderSettingsPanel() {
-  const body = document.getElementById('settingsBody');
-  body.innerHTML = '';
-  for (const [label, key, step] of SETTINGS_FIELDS) {
-    const wrap = document.createElement('div');
-    wrap.className = 'field';
-    const lab = document.createElement('label');
-    lab.textContent = label;
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.step = step;
-    input.value = CONFIG[key];
-    input.dataset.key = key;
-    wrap.appendChild(lab);
-    wrap.appendChild(input);
-    body.appendChild(wrap);
-  }
-
-  // interpretation mode for fractional score steps (e.g. "-1.5 for a 95 score")
-  const wrap = document.createElement('div');
-  wrap.className = 'field';
-  const lab = document.createElement('label');
-  lab.textContent = 'Fractional score-step mode';
-  const select = document.createElement('select');
-  select.id = 'scoreStepModeSelect';
-  select.innerHTML = `
-    <option value="STEP">STEP — only whole 10-point bands count</option>
-    <option value="CONTINUOUS">CONTINUOUS — scales smoothly (score 95 → +1.5%)</option>`;
-  select.value = CONFIG.scoreStepMode;
-  wrap.appendChild(lab);
-  wrap.appendChild(select);
-  body.appendChild(wrap);
-}
-
-// Reads whatever is currently typed in the config panel back into CONFIG,
-// then restarts the simulation from week 0 with the new values.
-// (It has to restart: changing the rules halfway through would produce a
-// run that followed two different rule sets, which tells you nothing.)
-function applySettingsFromPanel() {
-  const inputs = document.querySelectorAll('#settingsBody input[data-key]');
-  inputs.forEach(inp => {
-    const key = inp.dataset.key;
-    CONFIG[key] = parseFloat(inp.value);
+    tb.appendChild(tr);
   });
-  CONFIG.scoreStepMode = document.getElementById('scoreStepModeSelect').value;
-  resetSim();
+  t.appendChild(tb);
+  return wrap;
 }
+function limitTable(note){
+  const {wrap,t}=tableShell(note);
+  t.innerHTML='<thead><tr><th>Upper rating limit</th><th>Lower rating limit</th><th>Maximum outstanding loans</th></tr></thead>';
+  const tb=document.createElement('tbody');
+  const cell=(node)=>{const td=document.createElement('td'); td.appendChild(node); return td;};
+  const numIn=(k,aria)=>cellInput({k, t:'num', min:-1000, max:1000, step:1, aria});
+  const derived=(id)=>{const sp=document.createElement('span'); sp.id=id; sp.className='lim'; return sp;};
 
-/* =========================================================================
-   RENDERING — charts
-========================================================================= */
-// Y-axis config. `kind` is 'int' for things that are counted and can only
-// ever be whole numbers (people, defaults, write-offs), 'money' for rupee
-// amounts, or 'float' for genuinely continuous values like average score.
-// Integer axes drop any tick that isn't a whole number, so a chart whose
-// values are all 0 and 1 no longer draws 0.5 gridlines.
-// Formats a number for display, according to what KIND of thing it is:
-//   'int'   a count of things - whole numbers only (you can't have 2.5 defaults)
-//   'money' a rupee amount    - rounded, with Indian thousands separators
-//   'float' a genuine decimal - e.g. average credit score, shown to 2 places
-// Used by both the axis labels and the hover tooltips so they always agree.
-function formatValue(v, kind) {
-  if (kind === 'money') return '₹' + Math.round(v).toLocaleString('en-IN');
-  if (kind === 'int') return String(Math.round(v));
-  return (Math.round(v * 100) / 100).toLocaleString('en-IN');
-}
+  /* top band: the ceiling itself is editable */
+  let tr=document.createElement('tr');
+  tr.appendChild(cell(numIn('crCap','Rating ceiling')));
+  tr.appendChild(cell(numIn('cr75','Lower rating limit')));
+  tr.appendChild(cell(cellInput({k:'maxLoans', t:'num', min:0, max:20, step:1, aria:'Maximum outstanding loans'})));
+  tb.appendChild(tr);
 
-// Tooltip styling shared by every chart, so hovering anywhere on the plot
-// reads out the value at that week rather than requiring a precise hit on
-// an invisible point.
-function tooltipFor(kind, titlePrefix = 'Week ') {
-  return {
-    enabled: true,
-    backgroundColor: '#0B1017',
-    borderColor: '#212B36',
-    borderWidth: 1,
-    titleColor: '#E7EAEE',
-    bodyColor: '#E7EAEE',
-    padding: 10,
-    displayColors: true,
-    callbacks: {
-      title: (items) => titlePrefix + items[0].label,
-      label: (item) => {
-        const name = item.dataset.label ? item.dataset.label + ': ' : '';
-        return name + formatValue(item.parsed.y, kind);
-      },
-    },
-  };
-}
-
-// Hovering anywhere in the plot area picks the nearest week on the x axis.
-const HOVER_INTERACTION = { mode: 'index', intersect: false, axis: 'x' };
-
-// Builds the vertical-axis settings for a chart, based on what kind of number
-// it holds. The important case is 'int': without this, a chart whose values
-// are all 0 and 1 would draw gridlines at 0, 0.5, 1 — implying half a default
-// is a thing that can happen.
-function yAxisFor(kind) {
-  const base = {
-    ticks: { color: '#8A93A3' },
-    grid: { color: '#212B36' },
-    beginAtZero: true,
-  };
-  if (kind === 'int') {
-    base.ticks.precision = 0;
-    base.ticks.stepSize = 1;
-    // belt and braces: drop any tick Chart.js still generates at .5 etc
-    base.afterBuildTicks = (axis) => {
-      axis.ticks = axis.ticks.filter(t => Number.isInteger(t.value));
-    };
-    return base;
-  }
-  if (kind === 'money') {
-    base.ticks.callback = (v) => '₹' + Math.round(v).toLocaleString('en-IN');
-  }
-  return base;
-}
-
-// Creates a standard single-line chart (defaults per week, average score,
-// outstanding principal, and so on).
-//   ctx   = which canvas on the page to draw into
-//   label = the series name, shown in the tooltip
-//   color = the line colour
-//   kind  = 'int' / 'money' / 'float', controls number formatting
-function makeLineChart(ctx, label, color, kind = 'float') {
-  return new Chart(ctx, {
-    type: 'line',
-    data: { labels: [], datasets: [{ label, data: [], borderColor: color, backgroundColor: color + '33',
-      tension: 0.25, borderWidth: 2, fill: true,
-      pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: color,
-      pointHoverBorderColor: '#0B1017', pointHoverBorderWidth: 2 }] },
-    options: {
-      responsive: true, maintainAspectRatio: true, aspectRatio: 1.9,
-      animation: false,
-      interaction: HOVER_INTERACTION,
-      scales: {
-        x: { ticks: { color: '#8A93A3', maxTicksLimit: 8 }, grid: { color: '#212B36' } },
-        y: yAxisFor(kind),
-      },
-      plugins: { legend: { display: false }, tooltip: tooltipFor(kind) },
-    },
-  });
-}
-
-// Creates a chart with SEVERAL lines on one axis, for comparing counts
-// against each other (borrowers vs lenders, or ahead vs behind vs even).
-// Draws a legend automatically since there is more than one line.
-function makeMultiLineChart(ctx, series, kind = 'int') {
-  return new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: series.map(sr => ({
-        label: sr.label, data: [], borderColor: sr.color,
-        backgroundColor: 'transparent', tension: 0.25, borderWidth: 2, fill: false,
-        pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: sr.color,
-        pointHoverBorderColor: '#0B1017', pointHoverBorderWidth: 2,
-      })),
-    },
-    options: {
-      responsive: true, maintainAspectRatio: true, aspectRatio: 1.9,
-      animation: false,
-      scales: {
-        x: { ticks: { color: '#8A93A3', maxTicksLimit: 8 }, grid: { color: '#212B36' } },
-        y: yAxisFor(kind),
-      },
-      interaction: HOVER_INTERACTION,
-      plugins: {
-        legend: { display: true, labels: { color: '#8A93A3', boxWidth: 10, font: { size: 11 } } },
-        tooltip: tooltipFor(kind),
-      },
-    },
-  });
-}
-
-// Creates all ten charts once, when the page first loads. After this they are
-// never rebuilt — updateCharts() just feeds them new numbers, which is far
-// faster and stops the charts flickering on every step.
-function initCharts() {
-  // Both of these show PEOPLE as the headline number and the LOANS they were
-  // carrying as a second line. One person holding four loans misses four
-  // instalments in a week, so the two lines diverge as users take on more debt
-  // — the gap between them is how leveraged the defaulting borrowers are.
-  charts.defaults = makeMultiLineChart(document.getElementById('chartDefaults'), [
-    { label: 'Borrowers', color: '#C1503E' },
-    { label: 'Their loans', color: '#D4A24C' },
-  ]);
-  charts.writeoffs = makeMultiLineChart(document.getElementById('chartWriteoffs'), [
-    { label: 'Borrowers', color: '#C1503E' },
-    { label: 'Their loans', color: '#D4A24C' },
-  ]);
-  charts.avgScore = makeLineChart(document.getElementById('chartAvgScore'), 'Avg score', '#46A697', 'float');
-  charts.outstanding = makeLineChart(document.getElementById('chartOutstanding'), 'Outstanding ₹', '#D4A24C', 'money');
-  charts.lost = makeLineChart(document.getElementById('chartLost'), 'Cumulative lost ₹', '#C1503E', 'money');
-  charts.locked = makeLineChart(document.getElementById('chartLocked'), 'Locked out', '#C1503E', 'int');
-  charts.netSplit = makeMultiLineChart(document.getElementById('chartNetSplit'), [
-    { label: 'Net positive', color: '#46A697' },
-    { label: 'Net negative', color: '#C1503E' },
-    { label: 'Even',         color: '#8A93A3' },
-  ]);
-  charts.participation = makeMultiLineChart(document.getElementById('chartParticipation'), [
-    { label: 'Borrowers', color: '#D4A24C' },
-    { label: 'Lenders',   color: '#46A697' },
-  ]);
-  charts.interest = makeLineChart(document.getElementById('chartInterest'), 'Interest ₹', '#46A697', 'money');
-
-  charts.dist = new Chart(document.getElementById('chartDist'), {
-    type: 'bar',
-    data: { labels: [], datasets: [{
-      label: 'Users', data: [], backgroundColor: [],
-      // Gaps between bars, because the underlying values are discrete:
-      // a score is always a multiple of scoreGranularity(), never between.
-      // updateCharts() closes these gaps if the bins are coarse enough to
-      // each cover several attainable values.
-      barPercentage: 0.82, categoryPercentage: 0.9,
-      borderWidth: 0,
-    }] },
-    options: {
-      responsive: true, maintainAspectRatio: true, aspectRatio: 1.9,
-      animation: false,
-      interaction: { mode: 'index', intersect: false, axis: 'x' },
-      scales: {
-        x: { ticks: { color: '#8A93A3', autoSkip: false, maxRotation: 0 }, grid: { display: false } },
-        y: yAxisFor('int'),
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          enabled: true,
-          backgroundColor: '#0B1017', borderColor: '#212B36', borderWidth: 1,
-          titleColor: '#E7EAEE', bodyColor: '#E7EAEE', padding: 10,
-          displayColors: false,
-          callbacks: {
-            // half the axis labels are blank, so read the range off the
-            // binRanges array stashed on the chart in updateCharts()
-            title: (items) => {
-              const ch = items[0].chart;
-              const r = ch.binRanges?.[items[0].dataIndex];
-              if (!r) return '';
-              // one attainable value per bar -> name it exactly
-              return ch.binsDiscrete ? `Score ${r.lo}` : `Score ${r.lo}–${r.hi}`;
-            },
-            label: (item) => {
-              const n = item.parsed.y;
-              return `${n} user${n === 1 ? '' : 's'}`;
-            },
-          },
-        },
-      },
-    },
-  });
-}
-
-// Pushes the latest numbers into every chart. Called after each step.
-// The pattern throughout is the same: take the history list, pull out one
-// field from every week, and hand that list of values to the chart.
-function updateCharts() {
-  const labels = history.map(h => h.week);
-  const setData = (chart, values) => { chart.data.labels = labels; chart.data.datasets[0].data = values; chart.update('none'); };
-
-  // Two lines each: how many people, and how many loans those people held.
-  charts.defaults.data.labels = labels;
-  charts.defaults.data.datasets[0].data = history.map(h => h.defaultingUsers);
-  charts.defaults.data.datasets[1].data = history.map(h => h.defaults);
-  charts.defaults.update('none');
-
-  charts.writeoffs.data.labels = labels;
-  charts.writeoffs.data.datasets[0].data = history.map(h => h.writeOffUsers);
-  charts.writeoffs.data.datasets[1].data = history.map(h => h.writeOffs);
-  charts.writeoffs.update('none');
-  setData(charts.avgScore, history.map(h => h.avgScore));
-  setData(charts.outstanding, history.map(h => h.outstanding));
-  setData(charts.lost, history.map(h => h.cumulativeLost));
-  setData(charts.locked, history.map(h => h.lockedOut));
-  charts.netSplit.data.labels = labels;
-  charts.netSplit.data.datasets[0].data = history.map(h => h.netPositive);
-  charts.netSplit.data.datasets[1].data = history.map(h => h.netNegative);
-  charts.netSplit.data.datasets[2].data = history.map(h => h.netFlat);
-  charts.netSplit.update('none');
-
-  charts.participation.data.labels = labels;
-  charts.participation.data.datasets[0].data = history.map(h => h.activeBorrowers);
-  charts.participation.data.datasets[1].data = history.map(h => h.activeLenders);
-  charts.participation.update('none');
-  setData(charts.interest, history.map(h => h.cumulativeInterest));
-
-  const dist = scoreDistribution();
-  charts.dist.data.labels = dist.map(d => d.label);
-  charts.dist.data.datasets[0].data = dist.map(d => d.count);
-  charts.dist.data.datasets[0].backgroundColor = dist.map(binColour);
-  charts.dist.binRanges = dist.map(d => ({ lo: d.lo, hi: d.hi }));
-
-  // Discrete data gets separated bars; genuinely binned data gets a
-  // gapless histogram, since then a bar really does span a range.
-  const discrete = histogramIsDiscrete();
-  charts.dist.binsDiscrete = discrete;
-  charts.dist.data.datasets[0].barPercentage = discrete ? 0.82 : 1.0;
-  charts.dist.data.datasets[0].categoryPercentage = discrete ? 0.9 : 1.0;
-  charts.dist.update('none');
-
-  const latest = history[history.length - 1];
-  // Show people first, then the loans behind them, then the ratio.
-  const dU = latest.defaultingUsers, dL = latest.defaults;
-  document.getElementById('statDefaults').textContent =
-    dU === 0 ? 'latest week: nobody defaulted'
-             : `latest week: ${dU} borrower${dU === 1 ? '' : 's'} · ` +
-               `${dL} loan${dL === 1 ? '' : 's'} · ${(dL / dU).toFixed(1)} loans each`;
-  const wU = latest.writeOffUsers, wL = latest.writeOffs;
-  document.getElementById('statWriteoffs').textContent =
-    wU === 0 ? 'latest week: none'
-             : `latest week: ${wU} borrower${wU === 1 ? '' : 's'} · ` +
-               `${wL} loan${wL === 1 ? '' : 's'} written off · ${(wL / wU).toFixed(1)} each`;
-  document.getElementById('statAvgScore').textContent = `current: ${latest.avgScore.toFixed(1)}`;
-  document.getElementById('statOutstanding').textContent = `current: ₹${Math.round(latest.outstanding).toLocaleString('en-IN')}`;
-  document.getElementById('statLost').textContent =
-    `total: ₹${Math.round(latest.cumulativeLost).toLocaleString('en-IN')} · ` +
-    `${latest.lendersHurt} of ${users.length} lenders hit`;
-  document.getElementById('statLocked').textContent = `current: ${latest.lockedOut} of ${users.length}`;
-  document.getElementById('statNetSplit').textContent =
-    `${latest.netPositive} ahead · ${latest.netNegative} behind · ${latest.netFlat} even`;
-  document.getElementById('statParticipation').textContent =
-    `${latest.activeBorrowers} borrowing · ${latest.activeLenders} lending`;
-  document.getElementById('statInterest').textContent =
-    `total: ₹${Math.round(latest.cumulativeInterest).toLocaleString('en-IN')}`;
-  document.getElementById('statDist').textContent = histogramIsDiscrete()
-    ? `n = ${users.length} · scores move in steps of ${scoreGranularity()} · red = locked out, teal = benefits`
-    : `n = ${users.length} · ${CONFIG.scoreHistogramBinSize}-point bins · red = locked out, teal = benefits`;
-}
-
-/* =========================================================================
-   RENDERING — event log
-   Renders at most VISIBLE_LOG_LINES rows so a long run doesn't drop
-   thousands of DOM nodes on every step. Filters run over the full buffer.
-========================================================================= */
-const VISIBLE_LOG_LINES = 400;
-
-// Draws the event log, applying whatever filters are currently set
-// (event type, user id, week number, newest-first).
-function renderLog() {
-  const type = document.getElementById('logType').value;
-  const userQ = document.getElementById('logUser').value.trim();
-  const weekQ = document.getElementById('logWeek').value.trim();
-  const newestFirst = document.getElementById('logNewestFirst').checked;
-  const listEl = document.getElementById('logList');
-
-  let list = eventLog;
-  if (type !== 'all') list = list.filter(e => e.type === type);
-  // match either party, so filtering by a lender's id still finds the
-  // loans they funded
-  if (userQ) list = list.filter(e =>
-    String(e.userId) === userQ || String(e.counterpartyId) === userQ);
-  if (weekQ) list = list.filter(e => String(e.week) === weekQ);
-
-  const total = list.length;
-  const shown = newestFirst ? list.slice(-VISIBLE_LOG_LINES).reverse() : list.slice(0, VISIBLE_LOG_LINES);
-
-  document.getElementById('logCount').textContent =
-    total === 0 ? 'no events yet'
-                : `${Math.min(total, VISIBLE_LOG_LINES)} of ${total} events`;
-
-  if (total === 0) {
-    listEl.innerHTML = '<div class="log-empty">Nothing matches these filters. Step the simulation forward, or widen the filter.</div>';
-    return;
-  }
-
-  listEl.innerHTML = shown.map(e => `
-    <div class="log-line ${e.type}">
-      <span class="lw">wk ${e.week}</span>
-      <span class="lu">User ${e.userId}</span>
-      <span class="lt">${e.text}</span>
-    </div>`).join('');
-}
-
-/* =========================================================================
-   RENDERING — user ledger table
-   One row per user, both sides of the book. Click a header to sort.
-========================================================================= */
-let ledgerSort = { key: 'id', dir: 1 }; // dir: 1 = ascending, -1 = descending
-
-// Column definitions. `get` pulls the value out of a computed row object;
-// `fmt` renders it. Add a column by adding an entry here.
-const LEDGER_COLUMNS = [
-  { key: 'id',           label: 'User',            grp: '',         fmt: v => v },
-  { key: 'score',        label: 'Score',           grp: '',         fmt: v => v },
-  { key: 'loansTaken',   label: 'Loans',           grp: 'borrowed', fmt: v => v },
-  { key: 'totalBorrowed',label: 'Total borrowed',  grp: 'borrowed', fmt: money },
-  { key: 'principalLeft',label: 'Principal left',  grp: 'borrowed', fmt: money, cls: 'owed' },
-  { key: 'interestLeft', label: 'Interest left',   grp: 'borrowed', fmt: money, cls: 'owed' },
-  { key: 'interestPaid', label: 'Interest paid',   grp: 'borrowed', fmt: money },
-  { key: 'totalLent',    label: 'Total lent',      grp: 'lent',     fmt: money },
-  { key: 'lentOut',      label: 'Lent out now',    grp: 'lent',     fmt: money },
-  { key: 'interestEarned',label:'Interest earned', grp: 'lent',     fmt: money, cls: 'earned' },
-  { key: 'lostAsLender', label: 'Lost as lender',  grp: 'lent',     fmt: money, cls: 'lost' },
-  { key: 'netPosition',  label: 'Net position',    grp: '',         fmt: money },
-];
-
-// Formats a number as rupees with Indian-style separators: 1234567 -> ₹12,34,567
-function money(v) {
-  return '₹' + Math.round(v).toLocaleString('en-IN');
-}
-
-// Flatten a user into the numbers the table needs.
-// Flattens one user into the row of numbers the ledger table displays.
-// This is where the borrower side and the lender side get pulled together.
-function ledgerRow(u) {
-  const active = u.loans.filter(l => l.status === 'active');
-  const principalLeft = active.reduce((s, l) => s + l.remainingPrincipal, 0);
-  const interestLeft = active.reduce((s, l) => s + Math.max(0, l.totalInterest - l.interestPaid), 0);
-  const locked = u.score < CONFIG.lockoutThreshold;
-  const benefits = u.score > CONFIG.benefitsThreshold;
-
-  let status = 'active';
-  if (locked) status = 'locked';
-  else if (u.freshJoiner && u.loansFunded === 0) status = 'new';
-  else if (benefits) status = 'benefits';
-
-  return {
-    id: u.id,
-    score: u.score,
-    loansTaken: u.loans.length,
-    totalBorrowed: u.totalBorrowed,
-    principalLeft,
-    interestLeft,
-    interestPaid: interestPaidBy(u),
-    totalDue: principalLeft + interestLeft,
-    missed: active.reduce((m, l) => Math.max(m, l.consecutiveMisses), 0),
-    loansFunded: u.loansFunded,
-    totalLent: u.totalLent,
-    lentOut: u.lentOut,
-    interestEarned: u.interestEarned,
-    lostAsLender: u.principalLostAsLender,
-    netPosition: netPositionOf(u),
-    status,
-    _locked: locked,
-    _benefits: benefits,
-  };
-}
-
-// Draws the ledger table: filters the rows, sorts them by whichever column
-// header was last clicked, then writes out the header, the body and the
-// totals strip underneath.
-function renderLedger() {
-  const search = document.getElementById('ledgerSearch').value.trim();
-  const filter = document.getElementById('ledgerFilter').value;
-
-  let rows = users.map(ledgerRow);
-  if (search) rows = rows.filter(r => String(r.id).includes(search));
-  if (filter === 'borrowing') rows = rows.filter(r => r.totalDue > 0);
-  if (filter === 'lending') rows = rows.filter(r => r.lentOut > 0);
-  if (filter === 'locked') rows = rows.filter(r => r._locked);
-  if (filter === 'benefits') rows = rows.filter(r => r._benefits);
-  if (filter === 'idle') rows = rows.filter(r => r.loansTaken === 0 && r.loansFunded === 0);
-
-  // sort
-  const { key, dir } = ledgerSort;
-  rows.sort((a, b) => {
-    const av = a[key], bv = b[key];
-    if (typeof av === 'string') return dir * av.localeCompare(bv);
-    return dir * (av - bv);
+  [['lim-u2','cr65','maxLoansAt75'],['lim-u3','crNoLoan','maxLoansAt65']].forEach(r=>{
+    const row=document.createElement('tr');
+    row.appendChild(cell(derived(r[0])));
+    row.appendChild(cell(numIn(r[1],'Lower rating limit')));
+    row.appendChild(cell(cellInput({k:r[2], t:'num', min:0, max:20, step:1, aria:'Maximum outstanding loans'})));
+    tb.appendChild(row);
   });
 
-  // header
-  document.getElementById('ledgerHead').innerHTML = LEDGER_COLUMNS.map(c =>
-    `<th data-key="${c.key}" class="${key === c.key ? 'sorted' : ''}" title="Sort by ${c.label}">
-       ${c.grp ? `<span class="grp">${c.grp}</span>` : ''}${c.label}${key === c.key ? (dir === 1 ? ' \u25B2' : ' \u25BC') : ''}
-     </th>`).join('');
-
-  // body
-  document.getElementById('ledgerBody').innerHTML = rows.map(r => {
-    const cls = r._locked ? 'locked' : (r._benefits ? 'benefits' : '');
-    const cells = LEDGER_COLUMNS.map(c => {
-      const raw = r[c.key];
-      const isZero = typeof raw === 'number' && raw === 0;
-      const cellCls = [c.cls || '', isZero ? 'zero' : ''].filter(Boolean).join(' ');
-      return `<td class="${cellCls}">${c.fmt(raw)}</td>`;
-    }).join('');
-    return `<tr class="${cls}">${cells}</tr>`;
-  }).join('');
-
-  document.getElementById('ledgerCount').textContent = `${rows.length} / ${users.length} users`;
-
-  // platform totals across the filtered set
-  const sum = k => rows.reduce((s, r) => s + r[k], 0);
-  const up = rows.filter(r => r.netPosition > 0.005).length;
-  const down = rows.filter(r => r.netPosition < -0.005).length;
-  const even = rows.length - up - down;
-  const hurt = rows.filter(r => r.lostAsLender > 0).length;
-  document.getElementById('ledgerTotals').innerHTML = `
-    <span>Principal borrowed <b>${money(sum('totalBorrowed'))}</b></span>
-    <span>Principal still owed <b>${money(sum('principalLeft'))}</b></span>
-    <span>Interest still owed <b>${money(sum('interestLeft'))}</b></span>
-    <span>Interest paid so far <b>${money(sum('interestPaid'))}</b></span>
-    <span>Written off <b>${money(sum('lostAsLender'))}</b></span>
-    <span>Lenders who lost money <b>${hurt}</b></span>
-    <span>Net position <b class="earned">${up} ahead</b> / <b class="lost">${down} behind</b> / ${even} even</span>`;
+  const last=document.createElement('tr');
+  last.appendChild(cell(derived('lim-u4')));
+  last.appendChild(cell(numIn('crFloor','Rating floor')));
+  const none=document.createElement('td'); none.innerHTML='<strong>None</strong>';
+  last.appendChild(none);
+  tb.appendChild(last);
+  t.appendChild(tb);
+  return wrap;
+}
+function crTable(note){
+  const {wrap,t}=tableShell(note);
+  t.innerHTML='<thead><tr><th>Event</th><th>Basis</th><th>Points</th><th>Per \u20B9 owed</th></tr></thead>';
+  const tb=document.createElement('tbody');
+  [['Instalment paid','crUpMode','crUp','crUpPer','rises'],
+   ['Instalment missed','crDownMode','crDown','crDownPer','falls']].forEach(r=>{
+    const tr=document.createElement('tr');
+    const lab=document.createElement('td'); lab.textContent=r[0]+' \u2014 rating '+r[4];
+    const m=document.createElement('td');
+    m.appendChild(cellInput({k:r[1], t:'select', aria:r[0]+' basis',
+      opts:[['flat','Fixed, per instalment'],['scaled','Scaled by amount outstanding']]}));
+    const pts=document.createElement('td'); pts.appendChild(cellInput({k:r[2], t:'num', min:0, max:100, step:0.5, aria:r[0]+' points'}));
+    const per=document.createElement('td'); per.appendChild(cellInput({k:r[3], t:'num', min:1, max:1000000, step:100, aria:r[0]+' per rupees outstanding'}));
+    tr.appendChild(lab); tr.appendChild(m); tr.appendChild(pts); tr.appendChild(per); tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+  return wrap;
+}
+function syncLimits(){
+  const g=k=>{const e=$('f_'+k); return e?e.value:'';};
+  const set=(id,v)=>{const e=$(id); if(e) e.textContent=v;};
+  set('lim-u2', 'Below '+g('cr75'));
+  set('lim-u3', 'Below '+g('cr65'));
+  set('lim-u4', 'Below '+g('crNoLoan'));
 }
 
-/* =========================================================================
-   8. MASTER RENDER + WIRE-UP
-   renderAll() redraws every part of the screen. Below it, the buttons and
-   dropdowns are connected to the functions they should trigger.
-========================================================================= */
-// Redraws every part of the screen. Called after any change: stepping a week,
-// resetting, or applying new settings.
-function renderAll() {
-  document.getElementById('weekCounter').textContent =
-    `Week ${week} · Month ${(week / Math.max(1, CONFIG.weeksPerMonth)).toFixed(1)}`;
-  renderLedger();
-  updateCharts();
-  renderLog();
+/* 3. the per-rupee column only applies on the scaled basis */
+function syncCrBasis(){
+  [['crUpMode','crUpPer'],['crDownMode','crDownPer']].forEach(pair=>{
+    const m=$('f_'+pair[0]), per=$('f_'+pair[1]);
+    if(!m||!per) return;
+    const off = m.value!=='scaled';
+    per.disabled=off;
+    per.style.visibility = off ? 'hidden' : 'visible';
+  });
 }
+function buildForm(){
+  const host=$('form'); host.innerHTML='';
+  FORM.forEach(group=>{
+    const h=document.createElement('h3'); h.className='subhead'; h.textContent=group.title;
+    host.appendChild(h);
+    if(group.table==='cats'){ host.appendChild(catTable(group.note)); return; }
+    if(group.table==='limits'){ host.appendChild(limitTable(group.note)); return; }
+    if(group.table==='cr'){ host.appendChild(crTable(group.note)); return; }
+    const g=document.createElement('div'); g.className='grid'; host.appendChild(g);
+    group.fields.forEach(f=>g.appendChild(fieldEl(f)));
+  });
+}
+function writeForm(vals){
+  Object.keys(DEFAULTS).forEach(k=>{
+    const el=$('f_'+k); if(!el) return;
+    if(el.type==='checkbox') el.checked=!!vals[k]; else el.value=vals[k];
+  });
+}
+function readForm(){
+  const raw={};
+  Object.keys(DEFAULTS).forEach(k=>{
+    const el=$('f_'+k);
+    if(!el){ raw[k]=DEFAULTS[k]; return; }
+    raw[k] = (el.type==='checkbox') ? el.checked : el.value;
+  });
+  return raw;
+}
+buildForm(); writeForm(DEFAULTS); syncLimits(); syncCrBasis();
+['cr75','cr65','crNoLoan'].forEach(k=>{
+  const e=$('f_'+k); if(e) e.addEventListener('input', syncLimits);
+});
+['crUpMode','crDownMode'].forEach(k=>{
+  const e=$('f_'+k); if(e) e.addEventListener('change', syncCrBasis);
+});
+$('reset').onclick=()=>{ writeForm(DEFAULTS); syncLimits(); syncCrBasis(); };
 
-/* --- connect the controls ---------------------------------------------
-   "addEventListener('click', ...)" means: when this thing is clicked, run
-   that function. Nothing here runs on page load; it just sets up what should
-   happen later when the user interacts with the page.                     */
-
-// The three stepping buttons at the top right.
-document.getElementById('btnWeek').addEventListener('click', () => { stepWeek(); renderAll(); });
-document.getElementById('btnMonth').addEventListener('click', () => { stepMonth(); });
-document.getElementById('btnReset').addEventListener('click', () => resetSim());
-
-// "Apply & Reset" in the config panel.
-document.getElementById('btnApply').addEventListener('click', () => applySettingsFromPanel());
-
-// The ledger's search box and filter dropdown. Note these only REDRAW the
-// table — they never touch the simulation, so filtering changes nothing.
-document.getElementById('ledgerSearch').addEventListener('input', renderLedger);
-document.getElementById('ledgerFilter').addEventListener('change', renderLedger);
-
-// Clicking a ledger column header sorts by that column.
-document.getElementById('ledgerHead').addEventListener('click', (e) => {
-  const th = e.target.closest('th');   // which header was clicked?
-  if (!th) return;                     // clicked somewhere else - ignore
-  const key = th.dataset.key;          // which column it represents
-
-  // Clicking the SAME column again flips the direction (dir 1 <-> -1);
-  // clicking a NEW column starts it off ascending.
-  ledgerSort = (ledgerSort.key === key)
-    ? { key, dir: -ledgerSort.dir }
-    : { key, dir: 1 };
-
-  renderLedger();
+/* ---------- running and stepping ---------- */
+let SESS=null;
+function setup(seed){
+  LASTC=structured(readForm());
+  SESS=newSession(LASTC, seed);
+  LAST=snapshot(SESS);
+}
+function busy(fn){
+  const sub=$('wksub'); if(sub) sub.textContent='Working\u2026';
+  setTimeout(fn, 20);
+}
+$('restart').onclick=()=>{ if(SESS) setup(SESS.seed); else setup(); render(); };
+document.querySelectorAll('[data-step]').forEach(b=>{
+  b.onclick=()=>{ busy(()=>{ if(!SESS) setup(); advance(SESS, +b.dataset.step); LAST=snapshot(SESS); render(); }); };
 });
 
-// The event log's four filter controls.
-document.getElementById('logType').addEventListener('change', renderLog);
-document.getElementById('logUser').addEventListener('input', renderLog);
-document.getElementById('logWeek').addEventListener('input', renderLog);
-document.getElementById('logNewestFirst').addEventListener('change', renderLog);
+/* ---------- charts ---------- */
+const haveChart = (typeof Chart!=='undefined');
+if(haveChart){
+  Chart.defaults.font.family='"Segoe UI",-apple-system,Helvetica,Arial,sans-serif';
+  Chart.defaults.font.size=15;
+  Chart.defaults.color='#12212B';
+}
+function draw(id, labels, datasets, yTitle, fmt, extraY, opts){
+  opts=opts||{};
+  const el=$(id); if(!el) return;
+  if(!haveChart){ el.parentElement.innerHTML=''; return; }
+  if(charts[id]) charts[id].destroy();
+  const small = opts.small===true;
+  const dense = datasets.length > 10;
+  const scales={
+    x:{ title:{display:!small,text:'Week',font:{size:16,weight:'600'}}, ticks:{maxTicksLimit:small?6:13}, grid:{color:'#EDF0F2'} },
+    y:{ title:{display:!small,text:yTitle,font:{size:16,weight:'600'}},
+        ticks:{callback:v=>fmt(v)},
+        grid:{color:c=>c.tick.value===0?'#9FAEB8':'#EDF0F2', lineWidth:c=>c.tick.value===0?2:1} }
+  };
+  if(extraY) scales.y1=extraY;
+  charts[id]=new Chart(el,{
+    type:'line',
+    data:{labels,datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      elements:{line:{borderWidth:3,tension:.25},point:{radius:0,hoverRadius:7,hitRadius:12}},
+      plugins:{
+        legend:{display:opts.legend!==false, position:'bottom',labels:{boxWidth:26,boxHeight:4,padding:18,font:{size:15}}},
+        tooltip:{
+          titleFont:{size:dense?13:16}, bodyFont:{size:dense?11.5:15},
+          padding:dense?7:12, boxHeight:dense?7:14, boxWidth:dense?7:14,
+          bodySpacing:dense?1:2, caretPadding:6,
+          itemSort:(a,b)=>b.parsed.y-a.parsed.y,
+          callbacks:{ title:it=>'Week '+it[0].label,
+            label:it=>it.dataset.label+': '+((it.dataset.vfmt==='plain'?asNumber:fmt)(it.parsed.y)) }}
+      },
+      scales
+    }
+  });
+}
+const asRupees = v => rupees0(v);
+const asNumber = v => (Math.round(v*10)/10).toLocaleString('en-IN');
 
-/* --- start everything up ----------------------------------------------
-   These three lines are the only code that runs immediately when the page
-   loads. Everything else above waits to be called.                        */
-renderSettingsPanel();   // build the config input boxes
-initCharts();            // create the ten empty charts
-resetSim();              // build the users, seed week 0, and draw the screen
+/* ---------- results ---------- */
+/* Redraws the whole results page from LAST (the current snapshot) and
+   LASTC (the config it was run with). Called after every step. */
+function render(){
+  $('results-empty').style.display='none';
+  $('results-body').style.display='block';
+  const atZero = LAST.week===0;
+  $('wknow').textContent = 'Week '+LAST.week;
+  $('wksub').textContent = atZero ? 'nothing has happened yet'
+    : (LAST.runs>1 ? 'averaged over '+LAST.runs+' repeats of the same settings' : 'a single run');
+  drawLive(atZero);
+  $('week0').style.display = atZero?'block':'none';
+  $('headline').style.display = atZero?'none':'';
+  $('story').style.display = atZero?'none':'';
+  document.querySelectorAll('#results-body > .card').forEach(c=>c.style.display = atZero?'none':'');
+  $('people-empty').style.display = atZero?'block':'none';
+  $('people-body').style.display = atZero?'none':'block';
+  if(atZero) return;
+
+  const W=LAST.weekly, C=LASTC, cats=LAST.cats, last=W[W.length-1];
+  const labels=W.map(r=>r.week);
+  const ppl=LAST.detail.people;
+
+  /* headline numbers */
+  const totalPeople=ppl.length;
+  const lockedOut=ppl.filter(p=>p.cr<C.crNoLoan).length;
+  const askedTotal=W.reduce((s,r)=>s+r.made+r.unfunded+r.blocked,0);
+  const unfundedPct=askedTotal?100*W.reduce((s,r)=>s+r.unfunded,0)/askedTotal:0;
+  const blockedPct=askedTotal?100*W.reduce((s,r)=>s+r.blocked,0)/askedTotal:0;
+  const stats=[
+    ['Interest', rupees0(last.cumPaid)],
+    ['Loans originated', Math.round(W.reduce((s,r)=>s+r.made,0)).toLocaleString('en-IN')],
+    ['In default at horizon', asNumber(last.behind)+' of '+totalPeople],
+    ['Principal outstanding', rupees0(last.outstanding)],
+    ['Requests with no lender', unfundedPct.toFixed(0)+'%'],
+    ['Requests refused by the rules', blockedPct.toFixed(0)+'%']
+  ];
+  $('headline').innerHTML=stats.map(s=>'<div class="stat"><span class="k">'+s[0]+'</span><span class="v">'+s[1]+'</span></div>').join('');
+
+  /* the story in words */
+  const endPB=cats.map(k=>[k,catAvg(last,k,'pb')]).sort((a,b)=>b[1]-a[1]);
+  const endCR=cats.map(k=>[k,catAvg(last,k,'cr')]).sort((a,b)=>b[1]-a[1]);
+  const bits=[];
+  bits.push('At week '+LAST.week+', group <strong>'+endPB[0][0]+'</strong> holds the highest mean balance at '+rupees0(endPB[0][1])+' and group <strong>'+endPB[endPB.length-1][0]+'</strong> the lowest at '+rupees0(endPB[endPB.length-1][1])+'.');
+  bits.push('Mean credit rating is highest in group <strong>'+endCR[0][0]+'</strong> at '+endCR[0][1].toFixed(0)+' and lowest in group <strong>'+endCR[endCR.length-1][0]+'</strong> at '+endCR[endCR.length-1][1].toFixed(0)+'.');
+  bits.push(asNumber(last.behind)+' of '+totalPeople+' participants are in default, and '+lockedOut+' sit below '+C.crNoLoan+' and are excluded from new borrowing.');
+  const frozen=ppl.filter(p=>p.loans.filter(L=>L.open).length > maxLoansFor(p.cr,C)).length;
+  if(frozen) bits.push(frozen+' participants hold more loans than their current rating permits. Nothing is called in; they are simply unable to borrow again until enough loans run off.');
+  bits.push('Cumulative interest is '+rupees0(last.cumPaid)+', roughly '+rupees0(last.cumPaid/totalPeople)+' per participant.');
+  bits.push('Of every borrowing request made, '+blockedPct.toFixed(0)+'% were refused by the rules before reaching a lender \u2014 rating too low, loan limit reached, or already at the borrowing ceiling \u2014 and a further '+unfundedPct.toFixed(0)+'% reached the market but found no lender with funds to spare. Anyone excluded keeps asking every week they are short, so a high figure reflects repeat requests from the same people.');
+  const sinking=cats.filter(k=>(C.cat[k].min+C.cat[k].max)/2 < -100);
+  if(sinking.length) bits.push('Group'+(sinking.length>1?'s ':' ')+sinking.join(', ')+' hold'+(sinking.length>1?'':'s')+' a negative expected weekly surplus before any lending occurs, so '+(sinking.length>1?'their':'its')+' decline is a property of the population rather than of the credit rules.');
+  if(C.irPeriod==='year' && last.cumPaid < totalPeople*200) bits.push('Interest is small because the quoted rate is read per annum against tenures of a few weeks. The monthly and single-charge readings are available under Interest.');
+  bits.push(LAST.runs>1
+    ? 'Series are the mean of '+LAST.runs+' repetitions advancing together. Participant-level pages show the first repetition.'
+    : 'Single repetition. Ten or twenty repetitions give a steadier read on the parameters.');
+  $('story').innerHTML='<h2>Summary</h2><ul><li>'+bits.join('</li><li>')+'</li></ul>';
+
+  const pf=$('person-filter');
+  if(!pf.options.length){
+    pf.innerHTML=[...new Set(ppl.map(p=>p.code))].sort()
+      .map(c=>'<option value="'+c+'">'+c+' \u2014 '+(c[1]==='1'?'cautious':'risk-taking')+', '+TENNAME[c[2]]+'</option>').join('');
+  }
+  renderCharts();
+  renderDist();
+  renderStatus();
+  $('status-by').onchange = ()=>{ statusSort={key:null,dir:1}; renderStatus(); };
+  $('dist-by').onchange = renderDist;
+  $('grouping').onchange = renderCharts;
+  $('view').onchange = renderCharts;
+  pf.onchange = renderCharts;
+  draw('c-int', labels, [
+    {label:'Interest', data:W.map(r=>r.cumPaid), borderColor:'#1F3A5F', backgroundColor:'#1F3A5F'}
+  ], 'Cumulative total', asRupees, null, {legend:false});
+  draw('c-loans', labels, [
+    {label:'Loans originated', data:W.map(r=>r.made), borderColor:'#2E6FA7', backgroundColor:'#2E6FA7'},
+    {label:'Unfunded \u2014 no counterparty', data:W.map(r=>r.unfunded), borderColor:'#D4691E', backgroundColor:'#D4691E'},
+    {label:'Declined by rating band', data:W.map(r=>r.blocked), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[7,5]}
+  ], 'Requests per week', asNumber);
+
+  buildPeople();
+}
+
+function drawLive(atZero){
+  const W=LAST.weekly, now=atZero?null:W[W.length-1];
+  const people=LAST.detail.people.length;
+  const running=atZero?0:LAST.detail.allLoans.filter(L=>L.open).length;
+  const cells = atZero
+    ? [['Participants',people],['Loans outstanding',0],['In default',0],['Interest to date','\u20B90']]
+    : [['Originations this week', asNumber(now.made)],
+       ['Loans outstanding', running],
+       ['In default', asNumber(now.behind)+' of '+people],
+       ['Principal outstanding', rupees0(now.outstanding)],
+       ['Interest to date', rupees0(now.cumPaid)],
+       ['Requests declined this week', asNumber(now.unfunded+now.blocked)]];
+  $('runlive').innerHTML = cells.map(c=>'<div class="stat"><span class="k">'+c[0]+'</span><span class="v">'+c[1]+'</span></div>').join('');
+}
+
+const METRICS=[
+  ['panel-pb','pb','Mean pillow bank', v=>rupees0(v)],
+  ['panel-cr','cr','Mean credit rating', v=>asNumber(v)],
+  ['panel-def','def','Participants in default', v=>asNumber(v)],
+  ['panel-lock','lock','Excluded from borrowing', v=>asNumber(v)],
+  ['panel-ip','ip','Interest paid', v=>rupees0(v)],
+  ['panel-ie','ie','Interest earned', v=>rupees0(v)]
+];
+
+function drawBar(id, labels, datasets, yTitle, xTitle){
+  const el=$(id); if(!el||!haveChart) return;
+  if(charts[id]) charts[id].destroy();
+  charts[id]=new Chart(el,{
+    type:'bar', data:{labels,datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'bottom',labels:{boxWidth:22,boxHeight:12,padding:14,font:{size:14}}},
+        tooltip:{titleFont:{size:15},bodyFont:{size:14},padding:10,
+          callbacks:{label:it=>it.dataset.label+': '+it.parsed.y+(it.parsed.y===1?' participant':' participants')}}
+      },
+      scales:{
+        x:{stacked:true, title:{display:true,text:xTitle,font:{size:16,weight:'600'}}, grid:{display:false}},
+        y:{stacked:true, title:{display:true,text:yTitle,font:{size:16,weight:'600'}},
+           ticks:{precision:0}, grid:{color:'#EDF0F2'}}
+      }
+    }
+  });
+}
+
+/* how the population's ratings are spread, split any way you like */
+function renderDist(){
+  const C=LASTC, ppl=LAST.detail.people;
+  const g=GROUPINGS[$('dist-by').value]||GROUPINGS.cat;
+  const top=Math.ceil(C.crCap/10)*10;
+  const bands=[];
+  for(let lo=top-10; lo>=0; lo-=10) bands.push([lo, lo+10]);
+  bands.reverse();
+  const labels=['Below 0'].concat(bands.map(b=>b[0]+'\u2013'+b[1]));
+  const bandOf=v=>{
+    if(v<0) return 0;
+    for(let i=0;i<bands.length;i++){
+      const last=i===bands.length-1;
+      if(v>=bands[i][0] && (v<bands[i][1] || (last && v<=bands[i][1]))) return i+1;
+    }
+    return bands.length;
+  };
+  const keys=[]; const tally={};
+  ppl.forEach(p=>{
+    const k=g.keys(p.code);
+    if(!tally[k]){ tally[k]=new Array(labels.length).fill(0); keys.push(k); }
+    tally[k][bandOf(p.cr)]++;
+  });
+  const order = g.order ? g.order.filter(k=>keys.indexOf(k)>=0) : keys.sort();
+  drawBar('c-dist', labels, order.map(k=>({
+    label:g.name(k), data:tally[k], backgroundColor:g.color(k),
+    borderColor:'#FFFFFF', borderWidth:1
+  })), 'Participants', 'Credit rating at week '+LAST.week);
+}
+
+/* mean of one metric across a set of codes, week by week */
+const COUNTS={def:1, lock:1};
+/* Counts stay as counts. `divisor` is used only for the population
+   reference line, so that it sits on the same scale as the panel. */
+function meanOver(W, codes, field, divisor){
+  return W.map(r=>{
+    let sum=0, n=0;
+    codes.forEach(c=>{ const b=r.by[c]; if(!b) return; sum+=b[field]; n+=b.n; });
+    if(COUNTS[field]) return divisor ? sum/divisor : sum;
+    return n ? sum/n : 0;
+  });
+}
+function personSeries(p, field){ return p[field+'Series']||[]; }
+function tint(hex, alpha){
+  const n=parseInt(hex.slice(1),16);
+  return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+alpha+')';
+}
+
+function clearCharts(prefix){
+  Object.keys(charts).forEach(k=>{
+    if(k.indexOf(prefix)===0){ charts[k].destroy(); delete charts[k]; }
+  });
+}
+
+function renderCharts(){
+  const W=LAST.weekly, labels=W.map(r=>r.week);
+  const view=$('view').value;
+  const g=GROUPINGS[$('grouping').value]||GROUPINGS.arch;
+  $('series-field').style.display = (view==='combined') ? '' : 'none';
+  $('person-field').style.display = (view==='person') ? '' : 'none';
+  clearCharts('m-');
+
+  const allCodes=Object.keys(W[W.length-1].by).sort();
+  const totalN = allCodes.reduce((t,c)=>t+W[W.length-1].by[c].n, 0);
+  const panelKeys = view==='arch' ? allCodes
+                  : view==='profile' ? CATS.filter(k=>allCodes.some(c=>c[0]===k))
+                  : null;
+  const folk = (view==='person')
+    ? LAST.detail.people.filter(p=>p.code===$('person-filter').value)
+    : [];
+
+  METRICS.forEach(mt=>{
+    const host=$(mt[0]); if(!host) return;
+    const field=mt[1], axis=mt[2], fmt=mt[3];
+    host.innerHTML='';
+
+    if(view==='combined'){
+      host.className='';
+      const sets=groupSeries(W,g,field);
+      const box=document.createElement('div'); box.className='chartbox';
+      if(sets.length>10) box.style.height = Math.min(760, 420 + 18*sets.length) + 'px';
+      const cv=document.createElement('canvas'); cv.id='m-'+field; box.appendChild(cv); host.appendChild(box);
+      draw('m-'+field, labels, sets, axis, fmt);
+      return;
+    }
+
+    host.className='panels';
+
+    if(view==='person'){
+      const ref = meanOver(W, allCodes, field, totalN);
+      folk.forEach(pp=>{
+        const colour=COLOR[pp.cat];
+        const panel=document.createElement('div'); panel.className='panel';
+        const h=document.createElement('h4');
+        h.innerHTML='<span class="catchip" style="background:'+colour+'">'+pp.name+'</span>';
+        const box=document.createElement('div'); box.className='chartbox';
+        const id='m-'+field+'-p'+pp.id;
+        const cv=document.createElement('canvas'); cv.id=id;
+        box.appendChild(cv); panel.appendChild(h); panel.appendChild(box); host.appendChild(panel);
+        draw(id, labels, [
+          {label:pp.name, data:personSeries(pp,field), borderColor:colour, backgroundColor:colour},
+          {label:'Population mean', data:ref, borderColor:'#8FA0AC', backgroundColor:'#8FA0AC', borderDash:[6,4], borderWidth:2}
+        ], axis, fmt, null, {legend:false, small:true});
+      });
+      return;
+    }
+
+    const refAll = meanOver(W, allCodes, field, panelKeys.length);
+    panelKeys.forEach(key=>{
+      const codes = view==='arch' ? [key] : allCodes.filter(c=>c[0]===key);
+      const colour = COLOR[key[0]];
+      const panel=document.createElement('div'); panel.className='panel';
+      const h=document.createElement('h4');
+      h.innerHTML='<span class="catchip" style="background:'+colour+'">'+key+'</span>'+
+                  (view==='arch' ? ARCHLABEL(key) : CATSHORT[key]);
+      const box=document.createElement('div'); box.className='chartbox';
+      const id='m-'+field+'-'+key;
+      const cv=document.createElement('canvas'); cv.id=id;
+      box.appendChild(cv); panel.appendChild(h); panel.appendChild(box); host.appendChild(panel);
+
+      /* the parts that make up this panel, drawn faintly behind its mean */
+      const parts=[];
+      if(view==='profile'){
+        codes.forEach(c=>parts.push({
+          label:c, data:meanOver(W,[c],field,1),
+          borderColor:tint(colour,.42), backgroundColor:tint(colour,.42),
+          borderWidth:1.5, borderDash:ARCHDASH[c.slice(1)]
+        }));
+      } else {
+        LAST.detail.people.filter(pp=>pp.code===key).forEach(pp=>parts.push({
+          label:pp.name, data:personSeries(pp,field),
+          borderColor:tint(colour,.34), backgroundColor:tint(colour,.34), borderWidth:1.3
+        }));
+      }
+
+      draw(id, labels, parts.concat([
+        {label:key, data:meanOver(W,codes,field,1), borderColor:colour, backgroundColor:colour, borderWidth:3.5},
+        {label:'Population mean', data:refAll, borderColor:'#6E808D', backgroundColor:'#6E808D', borderDash:[6,4], borderWidth:2}
+      ]), axis, fmt, null, {legend:false, small:true});
+    });
+  });
+}
+function ARCHLABEL(code){
+  return ' '+(code[1]==='1'?'cautious':'risk-taking')+', '+TENNAME[code[2]];
+}
+
+/* ---------- person by person ---------- */
+function buildPeople(){
+  const ppl=LAST.detail.people;
+  const sel=$('person');
+  sel.innerHTML=ppl.map(p=>'<option value="'+p.id+'">'+p.name+' \u2014 '+(p.riskTaker?'risk-taking':'cautious')+', '+p.prefTenure+'-week tenure</option>').join('');
+  sel.onchange=()=>drawPerson(+sel.value);
+  drawPerson(ppl[0].id);
+}
+function drawPerson(id){
+  const p=LAST.detail.people.find(x=>x.id===id), C=LASTC;
+  const labels=p.pbSeries.map((_,i)=>i+1);
+  $('person-summary').innerHTML='<div class="headline">'+[
+    ['Archetype', p.code+' \u2014 '+(p.riskTaker?'risk-taking':'cautious')+', '+p.prefTenure+'-week tenure'],
+    ['Group', CATNAME[p.cat]],
+    ['Pillow bank', rupees0(p.pb)],
+    ['Credit rating', p.cr.toFixed(0)],
+    ['Status', p.inDefault?'<span class="tag def">Default</span>':'<span class="tag reg">Regular</span>'],
+    ['Loans taken / given', p.loansTaken+' / '+p.loansGiven],
+    ['Instalments paid / missed', p.paid+' / '+p.missed],
+    ['Interest paid / earned', rupees0(p.interestPaid)+' / '+rupees0(p.interestEarned)],
+    ['Weeks in default', p.weeksBehind]
+  ].map(s=>'<div class="stat" style="border-left-color:'+COLOR[p.cat]+'"><span class="k">'+s[0]+'</span><span class="v" style="font-size:1.15rem">'+s[1]+'</span></div>').join('')+'</div>';
+
+  const peers = LAST.detail.people.filter(x=>x.code===p.code && x.id!==p.id);
+  const faint = f => peers.map(x=>({label:x.name, data:personSeries(x,f),
+      borderColor:tint(COLOR[p.cat],.28), backgroundColor:tint(COLOR[p.cat],.28), borderWidth:1.2}));
+
+  draw('c-person', labels, faint('pb').concat([
+    {label:p.name+' pillow bank', data:p.pbSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5}
+  ]), 'Pillow bank', asRupees, null, {legend:false});
+
+  draw('c-person-cr', labels, faint('cr').concat([
+    {label:p.name+' credit rating', data:p.crSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5},
+    {label:'Exclusion threshold', data:labels.map(()=>C.crNoLoan), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[6,4], borderWidth:2}
+  ]), 'Credit rating', asNumber, null, {legend:false});
+
+  $('t-person-log').innerHTML = p.log.length
+    ? '<thead><tr><th style="width:90px">Week</th><th>Event</th></tr></thead><tbody>'+
+      p.log.map(e=>'<tr><td>'+e.w+'</td><td style="text-align:left">'+e.txt+'</td></tr>').join('')+'</tbody>'
+    : '<tbody><tr><td style="text-align:left">No events recorded: this participant neither borrowed nor lent.</td></tr></tbody>';
+}
+/* ---------- status at the horizon ---------- */
+let statusSort={key:null, dir:1};
+/* THE STATUS TABLE at the foot of the results page. Same data at three
+   levels of aggregation: the five groups, the thirty archetypes, or all
+   150 participants one row each. "Still owing" is the count of missed
+   instalments not yet regularised - the figure driving the weekly
+   rating charge in stage 5. */
+function renderStatus(){
+  const C=LASTC, ppl=LAST.detail.people, mode=$('status-by').value;
+  const openOf=p=>p.loans.filter(L=>L.open).length;
+  const chip=(txt,col)=>'<span class="catchip" style="background:'+col+'">'+txt+'</span>';
+  const tag=d=>d?'<span class="tag def">Default</span>':'<span class="tag reg">Regular</span>';
+  const mean=(g,f)=>g.length?g.reduce((s,x)=>s+f(x),0)/g.length:0;
+  const sum =(g,f)=>g.reduce((s,x)=>s+f(x),0);
+  let cols, rows;
+
+  if(mode==='person'){
+    cols=[
+      ['name','Participant',p=>p.name, p=>chip(p.name,COLOR[p.cat])],
+      ['cat','Group',p=>p.cat],
+      ['posture','Posture',p=>p.riskTaker?1:0, p=>p.riskTaker?'Risk-taking':'Cautious'],
+      ['tenure','Tenure',p=>p.prefTenure, p=>p.prefTenure+'w'],
+      ['pb','Pillow bank',p=>p.pb, p=>rupees0(p.pb)],
+      ['cr','Rating',p=>p.cr, p=>p.cr.toFixed(0)],
+      ['status','Status',p=>p.inDefault?1:0, p=>tag(p.inDefault)],
+      ['open','Loans open',p=>openOf(p)],
+      ['cap','Allowed',p=>maxLoansFor(p.cr,C)],
+      ['taken','Taken',p=>p.loansTaken],
+      ['given','Given',p=>p.loansGiven],
+      ['paid','Paid',p=>p.paid],
+      ['missed','Missed',p=>p.missed],
+      ['owing','Still owing',p=>missesOf(p)],
+      ['wks','Weeks behind',p=>p.weeksBehind],
+      ['ip','Interest paid',p=>p.interestPaid, p=>rupees0(p.interestPaid)],
+      ['ie','Interest earned',p=>p.interestEarned, p=>rupees0(p.interestEarned)],
+      ['net','Net',p=>p.interestEarned-p.interestPaid, p=>rupees0(p.interestEarned-p.interestPaid)]
+    ];
+    rows=ppl.slice();
+    $('status-note').textContent='One row per participant at week '+LAST.week+
+      '. "Still owing" counts missed instalments not yet regularised. Click a heading to sort.';
+  } else {
+    const keyOf = mode==='cat' ? (p=>p.cat) : (p=>p.code);
+    const keys=[...new Set(ppl.map(keyOf))].sort();
+    rows=keys.map(k=>{ const g=ppl.filter(p=>keyOf(p)===k); return {k,g}; });
+    cols=[
+      ['k', mode==='cat'?'Group':'Archetype', r=>r.k,
+         r=>chip(r.k,COLOR[r.k[0]])+' '+(mode==='cat'?CATSHORT[r.k]
+             :((r.k[1]==='1'?'cautious':'risk-taking')+', '+TENNAME[r.k[2]]))],
+      ['n','People',r=>r.g.length],
+      ['def','In default',r=>r.g.filter(p=>p.inDefault).length],
+      ['lock','Excluded',r=>r.g.filter(p=>p.cr<C.crNoLoan).length],
+      ['floor','At floor',r=>r.g.filter(p=>p.cr<=C.crFloor+1e-9).length],
+      ['cr','Mean rating',r=>mean(r.g,p=>p.cr), r=>mean(r.g,p=>p.cr).toFixed(1)],
+      ['pb','Mean pillow bank',r=>mean(r.g,p=>p.pb), r=>rupees0(mean(r.g,p=>p.pb))],
+      ['open','Loans open',r=>sum(r.g,openOf)],
+      ['taken','Taken',r=>sum(r.g,p=>p.loansTaken)],
+      ['given','Given',r=>sum(r.g,p=>p.loansGiven)],
+      ['paid','Paid',r=>sum(r.g,p=>p.paid)],
+      ['missed','Missed',r=>sum(r.g,p=>p.missed)],
+      ['owing','Still owing',r=>sum(r.g,p=>missesOf(p))],
+      ['ip','Interest paid',r=>sum(r.g,p=>p.interestPaid), r=>rupees0(sum(r.g,p=>p.interestPaid))],
+      ['ie','Interest earned',r=>sum(r.g,p=>p.interestEarned), r=>rupees0(sum(r.g,p=>p.interestEarned))],
+      ['net','Net',r=>sum(r.g,p=>p.interestEarned-p.interestPaid), r=>rupees0(sum(r.g,p=>p.interestEarned-p.interestPaid))]
+    ];
+    $('status-note').textContent=(mode==='cat'?'Five groups':'Thirty archetypes')+
+      ' at week '+LAST.week+'. Counts are totals, ratings and pillow banks are means.'+
+      (LAST.runs>1?' First repetition only.':'')+' Click a heading to sort.';
+  }
+
+  if(statusSort.key){
+    const c=cols.find(x=>x[0]===statusSort.key);
+    if(c) rows.sort((a,b)=>{const x=c[2](a),y=c[2](b);return (x>y?1:x<y?-1:0)*statusSort.dir;});
+  }
+  const t=$('t-status');
+  t.innerHTML='<thead><tr>'+cols.map(c=>'<th style="cursor:pointer" data-k="'+c[0]+'">'+c[1]+
+      (statusSort.key===c[0]?(statusSort.dir>0?' \u25B2':' \u25BC'):'')+'</th>').join('')+'</tr></thead><tbody>'+
+    rows.map(r=>'<tr>'+cols.map(c=>'<td>'+(c[3]?c[3](r):c[2](r))+'</td>').join('')+'</tr>').join('')+'</tbody>';
+  t.querySelectorAll('th[data-k]').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k;
+    if(statusSort.key===k) statusSort.dir*=-1; else { statusSort.key=k; statusSort.dir=1; }
+    renderStatus();
+  });
+}
+
+function catAvg(rec,k,f){let s=0,n=0;for(const c in rec.by){if(c[0]!==k)continue;s+=rec.by[c][f];n+=rec.by[c].n;}return n?s/n:0;}
+function catDef(rec,k){let d=0;for(const c in rec.by){if(c[0]===k)d+=rec.by[c].def;}return d;}
+
+/* ---------- compare runs ---------- */
+$('save-scenario').onclick=()=>{
+  const C=LASTC, last=LAST.weekly[LAST.weekly.length-1];
+  const asked=LAST.weekly.reduce((s,r)=>s+r.made+r.unfunded+r.blocked,0);
+  const unmetPct=asked?100*LAST.weekly.reduce((s,r)=>s+r.unfunded+r.blocked,0)/asked:0;
+  scenarios.push({
+    when:new Date().toLocaleTimeString(),
+    weeks:LAST.week, runs:C.runs, up:C.crUp, down:C.crDown,
+    rate:C.irBase+'% '+({year:'yearly',month:'monthly',term:'one-off'})[C.irPeriod],
+    behind:last.behind, paid:last.cumPaid,
+    loans:LAST.weekly.reduce((s,r)=>s+r.made,0),
+    unmet:unmetPct,
+    pb:Object.fromEntries(LAST.cats.map(k=>[k,catAvg(last,k,'pb')])),
+    cr:Object.fromEntries(LAST.cats.map(k=>[k,catAvg(last,k,'cr')]))
+  });
+  drawCompare(); show('compare');
+};
+$('clear-scenarios').onclick=()=>{ scenarios.length=0; drawCompare(); };
+function drawCompare(){
+  const t=$('t-compare');
+  if(!scenarios.length){ t.innerHTML='<tbody><tr><td style="text-align:left;padding:30px">No runs added yet. Use <strong>Add this run to the comparison</strong> at the foot of the Results page.</td></tr></tbody>'; return; }
+  const cats=CATS;
+  const heads=['Added','Weeks','Repetitions','Rise X','Fall Y','Interest','Originated','Requests refused','In default','Interest paid'].concat(cats.map(k=>'PB '+k)).concat(cats.map(k=>'Rating '+k));
+  t.innerHTML='<thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+
+    scenarios.map(s=>'<tr>'+[
+      s.when, s.weeks, s.runs, s.up, s.down, s.rate,
+      Math.round(s.loans), s.unmet.toFixed(0)+'%', asNumber(s.behind), rupees0(s.paid)
+    ].concat(cats.map(k=>s.pb[k]===undefined?'\u2014':rupees0(s.pb[k]))).concat(cats.map(k=>s.cr[k]===undefined?'\u2014':s.cr[k].toFixed(0)))
+     .map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody>';
+}
+drawCompare();
+
+/* ---------- downloads ---------- */
+function download(name, text){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([text],{type:'text/csv'}));
+  a.download=name; a.click(); URL.revokeObjectURL(a.href);
+}
+$('csv-week').onclick=()=>{
+  const codes=Object.keys(LAST.weekly[LAST.weekly.length-1].by).sort();
+  const head=['week'].concat(codes.map(c=>'pillow_bank_'+c)).concat(codes.map(c=>'credit_rating_'+c))
+    .concat(codes.map(c=>'in_default_'+c)).concat(codes.map(c=>'interest_paid_'+c)).concat(codes.map(c=>'interest_earned_'+c)).concat(['loans_made','loan_value','requests_unfunded','requests_blocked','interest_paid_cumulative','interest_earned_cumulative','outstanding']);
+  const cell=(r,c,f)=>{const b=r.by[c];return b&&b.n?(f==='def'?b.def:b[f]/b.n).toFixed(2):'';};
+  const rows=LAST.weekly.map(r=>[r.week].concat(codes.map(c=>cell(r,c,'pb'))).concat(codes.map(c=>cell(r,c,'cr')))
+    .concat(codes.map(c=>cell(r,c,'def'))).concat(codes.map(c=>cell(r,c,'ip'))).concat(codes.map(c=>cell(r,c,'ie'))).concat([r.made.toFixed(2),r.madeValue.toFixed(2),r.unfunded.toFixed(2),r.blocked.toFixed(2),r.cumPaid.toFixed(2),r.cumEarned.toFixed(2),r.outstanding.toFixed(2)]));
+  download('p2p-weeks.csv',[head.join(',')].concat(rows.map(r=>r.join(','))).join('\n'));
+};
+$('csv-people').onclick=()=>{
+  const head=['person','subtype','group','lending_style','wants_weeks','pillow_bank','credit_rating','behind','loans_taken','loans_given','instalments_paid','instalments_missed','weeks_behind','times_refused','interest_paid','interest_earned'];
+  const rows=LAST.detail.people.map(p=>[p.name,p.code,p.cat,p.riskTaker?'risk-taker':'cautious',p.prefTenure,p.pb.toFixed(2),p.cr.toFixed(2),p.inDefault?'yes':'no',
+    p.loansTaken,p.loansGiven,p.paid,p.missed,p.weeksBehind,p.refused,p.interestPaid.toFixed(2),p.interestEarned.toFixed(2)]);
+  download('p2p-people.csv',[head.join(',')].concat(rows.map(r=>r.join(','))).join('\n'));
+};
+
 </script>
 </body>
 </html>
