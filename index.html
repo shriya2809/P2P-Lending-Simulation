@@ -283,8 +283,15 @@ tbody tr:nth-child(even){background:#F7F9FA}
                 <div id="panel-ie"></div>
       </div>
 
+      <!-- NEW -->
       <div class="card">
-        <h2>Cumulative interest across the population</h2>
+        <h2>Lent principal in arrears per participant</h2>
+        <p class="hint" style="margin:0 0 10px">Principal a participant has lent out that their borrowers have missed and not yet repaid. Missed interest is not included.</p>
+        <div id="panel-la"></div>
+      </div>
+
+      <div class="card">
+        <h2>Interest earned vs lent principal in arrears</h2>
                 <div class="chartbox"><canvas id="c-int"></canvas></div>
       </div>
 
@@ -632,7 +639,7 @@ function crMove(p, dir, C, count){
    time forward. That is what lets the page step by 1, 4 or 48 weeks.
    ============================================== */
 /* Weekly totals that get averaged across repetitions in snapshot(). */
-const ACC=['made','madeValue','blocked','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind'];
+const ACC=['made','madeValue','blocked','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind','arrearsP','arrearsPStuck'];
 
 /* BUILDS THE STARTING WORLD - week 0.
    Everyone begins with an empty pillow bank, a rating of 100 and no
@@ -659,7 +666,7 @@ function createRun(C, seed, keepDetail){
         paid:0, missed:0, weeksBehind:0, refused:0,
         weekSurplus:0, prePb:0,
         pbSeries:[], crSeries:[], ipSeries:[], ieSeries:[], defSeries:[], lockSeries:[], log:[],
-        surplusSeries:[], prePbSeries:[]
+        surplusSeries:[], prePbSeries:[], laSeries:[], lentArrearsP:0
       };
       S.people.push(p); S.idx[pid]=p; pid++;
     }
@@ -1127,11 +1134,23 @@ function stepWeek(S){
      derived from these rows, plus the per-person series below.
      ------------------------------------------------------------------ */
   const rec={week:w, made, madeValue, blocked, unfunded, unfundedValue,
-             cumPaid:S.cumPaid, cumEarned:S.cumEarned, outstanding:0, behind:0, by:{}};
-  for(const L of allLoans) if(L.open) rec.outstanding+=L.outstanding;
+             cumPaid:S.cumPaid, cumEarned:S.cumEarned, outstanding:0, behind:0,
+             arrearsP:0, arrearsPStuck:0, by:{}};
+  /* NEW: principal in arrears, credited to the LENDER who is owed it.
+     arrearsPStuck is the part owed by borrowers whose group never
+     regularises, which under these rules is never repaid. */
+  for(const p of people) p.lentArrearsP = 0;
+  for(const L of allLoans) if(L.open){
+    rec.outstanding+=L.outstanding;
+    if(L.arrP > 0){
+      rec.arrearsP += L.arrP;
+      idx[L.lId].lentArrearsP += L.arrP;
+      if(!C.cat[idx[L.bId].cat].regularise) rec.arrearsPStuck += L.arrP;
+    }
+  }
   for(const p of people){
-    const b = rec.by[p.code] || (rec.by[p.code]={pb:0,cr:0,def:0,lock:0,ip:0,ie:0,n:0});
-    b.pb+=p.pb; b.cr+=p.cr; b.ip+=p.interestPaid; b.ie+=p.interestEarned; b.n++;
+    const b = rec.by[p.code] || (rec.by[p.code]={pb:0,cr:0,def:0,lock:0,ip:0,ie:0,la:0,n:0});
+    b.pb+=p.pb; b.cr+=p.cr; b.ip+=p.interestPaid; b.ie+=p.interestEarned; b.la+=p.lentArrearsP; b.n++;
     if(p.inDefault){ b.def++; rec.behind++; }
     if(p.cr < C.crNoLoan) b.lock++;
   }
@@ -1142,6 +1161,7 @@ function stepWeek(S){
     p.defSeries.push(p.inDefault?1:0); p.lockSeries.push(p.cr<C.crNoLoan?1:0);
     /* NEW */
     p.surplusSeries.push(p.weekSurplus); p.prePbSeries.push(p.prePb);
+    p.laSeries.push(p.lentArrearsP);
   }
 }
 
@@ -1168,17 +1188,17 @@ function snapshot(sess){
   const weekly=[];
   for(let i=0;i<len;i++){
     const a={week:i+1, made:0,madeValue:0,blocked:0,unfunded:0,unfundedValue:0,
-             cumPaid:0,cumEarned:0,outstanding:0,behind:0, by:{}};
+             cumPaid:0,cumEarned:0,outstanding:0,behind:0,arrearsP:0,arrearsPStuck:0, by:{}};
     for(const S of runs){
       const r=S.weekly[i];
       ACC.forEach(k=>a[k]+=r[k]);
       for(const c in r.by){
-        const t=a.by[c]||(a.by[c]={pb:0,cr:0,def:0,lock:0,ip:0,ie:0,n:0}), b=r.by[c];
-        t.pb+=b.pb; t.cr+=b.cr; t.def+=b.def; t.lock+=b.lock; t.ip+=b.ip; t.ie+=b.ie; t.n+=b.n;
+        const t=a.by[c]||(a.by[c]={pb:0,cr:0,def:0,lock:0,ip:0,ie:0,la:0,n:0}), b=r.by[c];
+        t.pb+=b.pb; t.cr+=b.cr; t.def+=b.def; t.lock+=b.lock; t.ip+=b.ip; t.ie+=b.ie; t.la+=b.la; t.n+=b.n;
       }
     }
     ACC.forEach(k=>a[k]/=n);
-    for(const c in a.by){ const t=a.by[c]; t.pb/=n; t.cr/=n; t.def/=n; t.lock/=n; t.ip/=n; t.ie/=n; t.n/=n; }
+    for(const c in a.by){ const t=a.by[c]; t.pb/=n; t.cr/=n; t.def/=n; t.lock/=n; t.ip/=n; t.ie/=n; t.la/=n; t.n/=n; }
     weekly.push(a);
   }
   return {detail:runs[0], weekly, cats:runs[0].cats, runs:n, week:runs[0].week};
@@ -1542,6 +1562,8 @@ function render(){
     ['Loans originated', Math.round(W.reduce((s,r)=>s+r.made,0)).toLocaleString('en-IN')],
     ['In default at horizon', asNumber(last.behind)+' of '+totalPeople],
     ['Principal outstanding', rupees0(last.outstanding)],
+    ['Lent principal in arrears', rupees0(last.arrearsP)],
+    ['\u2026 owed by groups that never regularise', rupees0(last.arrearsPStuck)],
     ['Requests with no lender', unfundedPct.toFixed(0)+'%'],
     ['Requests refused by the rules', blockedPct.toFixed(0)+'%']
   ];
@@ -1557,6 +1579,9 @@ function render(){
   const frozen=ppl.filter(p=>p.loans.filter(L=>L.open).length > maxLoansFor(p.cr,C)).length;
   if(frozen) bits.push(frozen+' participants hold more loans than their current rating permits. Nothing is called in; they are simply unable to borrow again until enough loans run off.');
   bits.push('Cumulative interest is '+rupees0(last.cumPaid)+', roughly '+rupees0(last.cumPaid/totalPeople)+' per participant.');
+  if(last.arrearsP>0) bits.push(rupees0(last.arrearsP)+' of lent principal is in arrears'+
+    (last.cumEarned>0 ? ', '+asNumber(last.arrearsP/last.cumEarned)+' times the interest lenders have earned' : '')+
+    '. '+rupees0(last.arrearsPStuck)+' of it is owed by borrowers in groups that never regularise, so under these rules it will not be repaid.');
   bits.push('Of every borrowing request made, '+blockedPct.toFixed(0)+'% were refused by the rules before reaching a lender \u2014 rating too low, loan limit reached, or already at the borrowing ceiling \u2014 and a further '+unfundedPct.toFixed(0)+'% reached the market but found no lender with funds to spare. Anyone excluded keeps asking every week they are short, so a high figure reflects repeat requests from the same people.');
   const sinking=cats.filter(k=>(C.cat[k].min+C.cat[k].max)/2 < -100);
   if(sinking.length) bits.push('Group'+(sinking.length>1?'s ':' ')+sinking.join(', ')+' hold'+(sinking.length>1?'':'s')+' a negative expected weekly surplus before any lending occurs, so '+(sinking.length>1?'their':'its')+' decline is a property of the population rather than of the credit rules.');
@@ -1580,8 +1605,10 @@ function render(){
   $('view').onchange = renderCharts;
   pf.onchange = renderCharts;
   draw('c-int', labels, [
-    {label:'Interest', data:W.map(r=>r.cumPaid), borderColor:'#1F3A5F', backgroundColor:'#1F3A5F'}
-  ], 'Cumulative total', asRupees, null, {legend:false});
+    {label:'Interest earned to date', data:W.map(r=>r.cumPaid), borderColor:'#1F3A5F', backgroundColor:'#1F3A5F'},
+    {label:'Lent principal in arrears', data:W.map(r=>r.arrearsP), borderColor:'#A81F2D', backgroundColor:'#A81F2D'},
+    {label:'\u2026 owed by groups that never regularise', data:W.map(r=>r.arrearsPStuck), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[7,5], borderWidth:2}
+  ], 'Rupees', asRupees);
   draw('c-loans', labels, [
     {label:'Loans originated', data:W.map(r=>r.made), borderColor:'#2E6FA7', backgroundColor:'#2E6FA7'},
     {label:'Unfunded \u2014 no counterparty', data:W.map(r=>r.unfunded), borderColor:'#D4691E', backgroundColor:'#D4691E'},
@@ -1602,6 +1629,7 @@ function drawLive(atZero){
        ['In default', asNumber(now.behind)+' of '+people],
        ['Principal outstanding', rupees0(now.outstanding)],
        ['Interest to date', rupees0(now.cumPaid)],
+       ['Lent principal in arrears', rupees0(now.arrearsP)],
        ['Requests declined this week', asNumber(now.unfunded+now.blocked)]];
   $('runlive').innerHTML = cells.map(c=>'<div class="stat"><span class="k">'+c[0]+'</span><span class="v">'+c[1]+'</span></div>').join('');
 }
@@ -1612,7 +1640,8 @@ const METRICS=[
   ['panel-def','def','Participants in default', v=>asNumber(v)],
   ['panel-lock','lock','Excluded from borrowing', v=>asNumber(v)],
   ['panel-ip','ip','Interest paid', v=>rupees0(v)],
-  ['panel-ie','ie','Interest earned', v=>rupees0(v)]
+  ['panel-ie','ie','Interest earned', v=>rupees0(v)],
+  ['panel-la','la','Lent principal in arrears', v=>rupees0(v)]
 ];
 
 function drawBar(id, labels, datasets, yTitle, xTitle){
@@ -1802,6 +1831,7 @@ function drawPerson(id){
     ['Loans taken / given', p.loansTaken+' / '+p.loansGiven],
     ['Instalments paid / missed', p.paid+' / '+p.missed],
     ['Interest paid / earned', rupees0(p.interestPaid)+' / '+rupees0(p.interestEarned)],
+    ['Lent principal in arrears', rupees0(p.lentArrearsP)],
     ['Weeks in default', p.weeksBehind]
   ].map(s=>'<div class="stat" style="border-left-color:'+COLOR[p.cat]+'"><span class="k">'+s[0]+'</span><span class="v" style="font-size:1.15rem">'+s[1]+'</span></div>').join('')+'</div>';
 
@@ -1884,6 +1914,7 @@ function renderStatus(){
       ['wks','Weeks behind',p=>p.weeksBehind],
       ['ip','Interest paid',p=>p.interestPaid, p=>rupees0(p.interestPaid)],
       ['ie','Interest earned',p=>p.interestEarned, p=>rupees0(p.interestEarned)],
+      ['la','Lent, in arrears',p=>p.lentArrearsP, p=>rupees0(p.lentArrearsP)],
       ['net','Net',p=>p.interestEarned-p.interestPaid, p=>rupees0(p.interestEarned-p.interestPaid)]
     ];
     rows=ppl.slice();
@@ -1911,6 +1942,7 @@ function renderStatus(){
       ['owing','Still owing',r=>sum(r.g,p=>missesOf(p))],
       ['ip','Interest paid',r=>sum(r.g,p=>p.interestPaid), r=>rupees0(sum(r.g,p=>p.interestPaid))],
       ['ie','Interest earned',r=>sum(r.g,p=>p.interestEarned), r=>rupees0(sum(r.g,p=>p.interestEarned))],
+      ['la','Lent, in arrears',r=>sum(r.g,p=>p.lentArrearsP), r=>rupees0(sum(r.g,p=>p.lentArrearsP))],
       ['net','Net',r=>sum(r.g,p=>p.interestEarned-p.interestPaid), r=>rupees0(sum(r.g,p=>p.interestEarned-p.interestPaid))]
     ];
     $('status-note').textContent=(mode==='cat'?'Five groups':'Thirty archetypes')+
@@ -1945,7 +1977,7 @@ $('save-scenario').onclick=()=>{
     when:new Date().toLocaleTimeString(),
     weeks:LAST.week, runs:C.runs, up:C.crUp, down:C.crDown,
     rate:C.irBase+'% '+({year:'yearly',month:'monthly',term:'one-off'})[C.irPeriod],
-    behind:last.behind, paid:last.cumPaid,
+    behind:last.behind, paid:last.cumPaid, arrears:last.arrearsP,
     loans:LAST.weekly.reduce((s,r)=>s+r.made,0),
     unmet:unmetPct,
     pb:Object.fromEntries(LAST.cats.map(k=>[k,catAvg(last,k,'pb')])),
@@ -1958,11 +1990,11 @@ function drawCompare(){
   const t=$('t-compare');
   if(!scenarios.length){ t.innerHTML='<tbody><tr><td style="text-align:left;padding:30px">No runs added yet. Use <strong>Add this run to the comparison</strong> at the foot of the Results page.</td></tr></tbody>'; return; }
   const cats=CATS;
-  const heads=['Added','Weeks','Repetitions','Rise X','Fall Y','Interest','Originated','Requests refused','In default','Interest paid'].concat(cats.map(k=>'PB '+k)).concat(cats.map(k=>'Rating '+k));
+  const heads=['Added','Weeks','Repetitions','Rise X','Fall Y','Interest','Originated','Requests refused','In default','Interest paid','Lent principal in arrears'].concat(cats.map(k=>'PB '+k)).concat(cats.map(k=>'Rating '+k));
   t.innerHTML='<thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+
     scenarios.map(s=>'<tr>'+[
       s.when, s.weeks, s.runs, s.up, s.down, s.rate,
-      Math.round(s.loans), s.unmet.toFixed(0)+'%', asNumber(s.behind), rupees0(s.paid)
+      Math.round(s.loans), s.unmet.toFixed(0)+'%', asNumber(s.behind), rupees0(s.paid), rupees0(s.arrears)
     ].concat(cats.map(k=>s.pb[k]===undefined?'\u2014':rupees0(s.pb[k]))).concat(cats.map(k=>s.cr[k]===undefined?'\u2014':s.cr[k].toFixed(0)))
      .map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody>';
 }
@@ -1977,16 +2009,16 @@ function download(name, text){
 $('csv-week').onclick=()=>{
   const codes=Object.keys(LAST.weekly[LAST.weekly.length-1].by).sort();
   const head=['week'].concat(codes.map(c=>'pillow_bank_'+c)).concat(codes.map(c=>'credit_rating_'+c))
-    .concat(codes.map(c=>'in_default_'+c)).concat(codes.map(c=>'interest_paid_'+c)).concat(codes.map(c=>'interest_earned_'+c)).concat(['loans_made','loan_value','requests_unfunded','requests_blocked','interest_paid_cumulative','interest_earned_cumulative','outstanding']);
+    .concat(codes.map(c=>'in_default_'+c)).concat(codes.map(c=>'interest_paid_'+c)).concat(codes.map(c=>'interest_earned_'+c)).concat(['loans_made','loan_value','requests_unfunded','requests_blocked','interest_paid_cumulative','interest_earned_cumulative','outstanding','lent_principal_in_arrears','of_which_non_regularising']);
   const cell=(r,c,f)=>{const b=r.by[c];return b&&b.n?(f==='def'?b.def:b[f]/b.n).toFixed(2):'';};
   const rows=LAST.weekly.map(r=>[r.week].concat(codes.map(c=>cell(r,c,'pb'))).concat(codes.map(c=>cell(r,c,'cr')))
-    .concat(codes.map(c=>cell(r,c,'def'))).concat(codes.map(c=>cell(r,c,'ip'))).concat(codes.map(c=>cell(r,c,'ie'))).concat([r.made.toFixed(2),r.madeValue.toFixed(2),r.unfunded.toFixed(2),r.blocked.toFixed(2),r.cumPaid.toFixed(2),r.cumEarned.toFixed(2),r.outstanding.toFixed(2)]));
+    .concat(codes.map(c=>cell(r,c,'def'))).concat(codes.map(c=>cell(r,c,'ip'))).concat(codes.map(c=>cell(r,c,'ie'))).concat([r.made.toFixed(2),r.madeValue.toFixed(2),r.unfunded.toFixed(2),r.blocked.toFixed(2),r.cumPaid.toFixed(2),r.cumEarned.toFixed(2),r.outstanding.toFixed(2),r.arrearsP.toFixed(2),r.arrearsPStuck.toFixed(2)]));
   download('p2p-weeks.csv',[head.join(',')].concat(rows.map(r=>r.join(','))).join('\n'));
 };
 $('csv-people').onclick=()=>{
-  const head=['person','subtype','group','lending_style','wants_weeks','pillow_bank','credit_rating','behind','loans_taken','loans_given','instalments_paid','instalments_missed','weeks_behind','times_refused','interest_paid','interest_earned'];
+  const head=['person','subtype','group','lending_style','wants_weeks','pillow_bank','credit_rating','behind','loans_taken','loans_given','instalments_paid','instalments_missed','weeks_behind','times_refused','interest_paid','interest_earned','lent_principal_in_arrears'];
   const rows=LAST.detail.people.map(p=>[p.name,p.code,p.cat,p.riskTaker?'risk-taker':'cautious',p.prefTenure,p.pb.toFixed(2),p.cr.toFixed(2),p.inDefault?'yes':'no',
-    p.loansTaken,p.loansGiven,p.paid,p.missed,p.weeksBehind,p.refused,p.interestPaid.toFixed(2),p.interestEarned.toFixed(2)]);
+    p.loansTaken,p.loansGiven,p.paid,p.missed,p.weeksBehind,p.refused,p.interestPaid.toFixed(2),p.interestEarned.toFixed(2),p.lentArrearsP.toFixed(2)]);
   download('p2p-people.csv',[head.join(',')].concat(rows.map(r=>r.join(','))).join('\n'));
 };
 
