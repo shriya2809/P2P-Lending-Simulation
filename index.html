@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Peer-to-Peer Lending Simulation</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
@@ -135,7 +135,7 @@ tbody tr:nth-child(even){background:#F7F9FA}
 .logtable tr.k-end td{background:#DCE5F0;font-weight:600}
 .logtable tr.k-rating td{background:var(--accent-soft);font-weight:600}
 .logtable tr.k-missed td,.logtable tr.k-notreceived td{background:#FBE9EB}
-.logtable tr.k-book td{color:var(--ink-soft)}
+.logtable tr.k-book td,.logtable tr.k-summary td{color:var(--ink-soft)}
 .pos{color:var(--good);font-weight:600}
 .neg{color:var(--bad);font-weight:600}
 .mismatch{color:var(--bad);font-weight:700}
@@ -144,6 +144,8 @@ tbody tr:nth-child(even){background:#F7F9FA}
 .partable th{text-align:center;vertical-align:bottom;font-size:.82rem;line-height:1.25;padding:10px 8px;white-space:normal}
 .partable td{padding:8px;text-align:center}
 .partable td:first-child{text-align:left;white-space:nowrap;font-weight:600}
+.partable td:first-child label{font-weight:600;white-space:normal}
+.partable input[type=text]{min-width:220px}
 .partable input,.partable select{
   height:44px;min-width:112px;width:100%;font-size:.95rem;font-family:inherit;
   padding:6px 8px;border:2px solid var(--line-strong);border-radius:6px;background:#fff;color:var(--ink);text-align:center;
@@ -161,10 +163,23 @@ tbody tr:nth-child(even){background:#F7F9FA}
 .empty{background:#fff;border:2px dashed var(--line-strong);border-radius:10px;padding:44px 24px;text-align:center}
 .empty p{max-width:48ch;margin:0 auto .9rem;color:var(--ink-soft)}
 
+.saved{background:var(--accent-soft);border:1px solid #B9C8DC;border-radius:10px;padding:18px 22px;margin:0 0 20px}
+.saved h3{margin:0 0 .4rem}
+.saved-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:14px}
+.saved-row .field input[type=text]{width:100%;height:48px;font-size:1rem;font-family:inherit;padding:8px 12px;border:2px solid var(--line-strong);border-radius:7px;background:#fff;color:var(--ink)}
+.saved-row .btn,.saved-row .btn-2{height:52px;padding-top:0;padding-bottom:0;font-size:1.05rem}
+#saved-msg.ok{color:var(--good);font-weight:600}
+#saved-msg.bad{color:var(--bad);font-weight:600}
 .rules dt{font-weight:700;margin-top:1rem}
 .rules dd{margin:.2rem 0 0;color:var(--ink-soft)}
 .flag{background:#FBF3DF;border-left:5px solid var(--catC);padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0}
 .flag strong{display:block;margin-bottom:.3rem}
+
+.checktable td.det{text-align:left;color:var(--ink-soft);font-size:.85rem}
+.checktable td.nm{text-align:left}
+.checkhead{font-family:Georgia,serif;font-size:1.1rem;font-weight:600;margin:14px 0 0}
+.checkhead.ok{color:var(--good)}
+.checkhead.bad{color:var(--bad)}
 
 @media (max-width:620px){
   :root{--base:16px}
@@ -199,6 +214,25 @@ tbody tr:nth-child(even){background:#F7F9FA}
   <section class="view on" id="view-settings">
     <div class="card">
       <h2>Parameters</h2>
+      <div class="saved" id="saved-box">
+        <h3>Saved settings</h3>
+        <p class="hint" style="margin:0 0 14px" id="saved-msg">Give the settings below a name and save them. They stay on this computer, so they are still here the next time you open the page. Whatever you last had on screen is also kept automatically.</p>
+        <div class="saved-row">
+          <div class="field" style="flex:2 1 260px">
+            <label for="preset-name">Name for these settings</label>
+            <input type="text" id="preset-name" placeholder="e.g. Strict defaults, no bias" maxlength="80">
+          </div>
+          <button type="button" class="btn" id="preset-save">Save settings</button>
+        </div>
+        <div class="saved-row">
+          <div class="field" style="flex:2 1 260px">
+            <label for="preset-list">Saved settings</label>
+            <select id="preset-list"></select>
+          </div>
+          <button type="button" class="btn" id="preset-load">Open these settings</button>
+          <button type="button" class="btn-2" id="preset-del">Delete</button>
+        </div>
+      </div>
             <div id="form"></div>
       <div class="btn-row" style="margin-top:26px">
         <button type="button" class="btn-2" id="reset">Restore specification defaults</button>
@@ -251,7 +285,7 @@ tbody tr:nth-child(even){background:#F7F9FA}
             <option value="arch" selected>Archetype &mdash; all 30 codes</option>
             <option value="cat">Group &mdash; A to E</option>
             <option value="risk">Lending posture &mdash; cautious or risk-taking</option>
-            <option value="tenure">Preferred tenure &mdash; 4, 8 or 12 weeks</option>
+            <option value="tenure">Preferred loan period &mdash; short, medium or long</option>
             <option value="catrisk">Group, split by lending posture</option>
           </select>
         </div></div>
@@ -260,6 +294,12 @@ tbody tr:nth-child(even){background:#F7F9FA}
       <div class="card">
         <h2>Pillow bank</h2>
                 <div id="panel-pb"></div>
+      </div>
+
+      <div class="card">
+        <h2>Net balance sheet per participant</h2>
+        <p class="hint" style="margin:0 0 10px">Pillow bank + principal and interest still to be received on loans given (leaving out anything in default) &minus; principal and interest still to be paid on loans taken (including everything in default and the default interest on it).</p>
+        <div id="panel-nb"></div>
       </div>
 
       <div class="card">
@@ -285,6 +325,12 @@ tbody tr:nth-child(even){background:#F7F9FA}
       <div class="card">
         <h2>Participants in default</h2>
                 <div id="panel-def"></div>
+      </div>
+
+      <div class="card">
+        <h2>Default owed per participant</h2>
+        <p class="hint" style="margin:0 0 10px">Missed principal and interest still unpaid, plus the default interest compounding on it.</p>
+        <div id="panel-dout"></div>
       </div>
 
       <div class="card">
@@ -333,6 +379,16 @@ tbody tr:nth-child(even){background:#F7F9FA}
       </div>
 
       <div class="card">
+        <h2>Integrity checks</h2>
+        <p class="hint" style="margin:0 0 14px">Runs every arithmetic and rule check against the run now on screen: money conservation, weekly reconciliation of each pillow bank, loan balances, interest, ratings, borrowing limits, and whether the event log accounts for every movement. Uses the first repetition, the one the Individuals page shows.</p>
+        <div class="btn-row">
+          <button type="button" class="btn" id="run-checks">Run all checks</button>
+          <button type="button" class="btn-2" id="csv-checks">Export results (CSV)</button>
+        </div>
+        <div id="checks-out"></div>
+      </div>
+
+      <div class="card">
         <div class="btn-row">
           <button type="button" class="btn-2" id="save-scenario">Add this run to the comparison</button>
           <button type="button" class="btn-2" id="csv-week">Export weekly series (CSV)</button>
@@ -364,11 +420,13 @@ tbody tr:nth-child(even){background:#F7F9FA}
         <div class="chartbox" style="height:320px"><canvas id="c-person-pre"></canvas></div>
         <h3 style="margin-top:26px">Pillow Bank at End of Week</h3>
         <div class="chartbox" style="height:320px"><canvas id="c-person"></canvas></div>
+        <h3 style="margin-top:26px">Net Balance Sheet</h3>
+        <div class="chartbox" style="height:320px"><canvas id="c-person-nb"></canvas></div>
         <h3 style="margin-top:26px">Credit Rating</h3>
         <div class="chartbox" style="height:320px"><canvas id="c-person-cr"></canvas></div>
 
         <h3 style="margin-top:26px">Event log &mdash; full audit trail</h3>
-        <p class="hint" style="margin:0 0 12px">Every week opens with the pillow bank carried in, then lists every rupee that moved in the order it moved: the surplus draw, each instalment due, paid, received or missed (loan by loan), arrears cleared, loans taken and given. Each money row shows the change and the balance after it. The week closes with the loan book, the rating move, and a check that opening balance plus all movements equals the closing balance.</p>
+        <p class="hint" style="margin:0 0 12px">Everything that happened to this participant, week by week, in the order it happened. Money rows show the change and the balance after it; each week closes with a check that the balance adds up.</p>
         <div class="grid" style="margin-bottom:12px">
           <div class="field">
             <label for="log-week">Week</label>
@@ -421,15 +479,26 @@ tbody tr:nth-child(even){background:#F7F9FA}
         instalments; anyone above +1000 with nothing owing can lend
      4  the borrowers pay; anything still unpaid once all the week's money
         has moved becomes arrears; spare cash applied
-     5  default status set, and the rating charged for arrears still owing
+     2a default interest compounds on anything already in default
+     5  every loan is scored on its own (in default or not at the start
+        of the week, paid or missed, share of its default cleared); the
+        loans' points are summed or averaged into one rating move;
+        default-interest clocks reset
      6  the week's figures recorded for the charts
 
    MONEY IS CONSERVED. At any point, the sum of all pillow banks equals
    the sum of every surplus ever drawn.
 
-   AUDIT LOG (NEW): every change to a pillow bank goes through move(),
-   which records the amount, the balance before and the balance after.
-   The end-of-week row reconciles opening balance + movements = closing.
+   AUDIT LOG: every change to a pillow bank goes through move(), which
+   records the amount, the balance before and the balance after. Every
+   decision that does NOT move money - a request refused, a lender
+   sitting out, a rating move, a borrowing limit changing - is logged
+   too, so the log accounts for the whole week. The end-of-week row
+   reconciles opening balance + movements = closing.
+
+   INTEGRITY CHECKS. runChecks() re-derives the invariants from the
+   finished run and from the log itself; the Results page runs it on
+   demand.
    ================================================================== */
 
 const CATS = ['A','B','C','D','E'];
@@ -440,11 +509,18 @@ const DEFAULTS = {
   runs: 1,
 
   /* --- the five groups --- */
-  A_min:-2000, A_max:2000, A_regularise:1, A_prepay:0, A_biasCR:100, A_bias:1000, A_shortfall:'miss',
-  B_min:-1500, B_max:1500, B_regularise:1, B_prepay:0, B_biasCR:90,  B_bias:700,  B_shortfall:'miss',
-  C_min:-2000, C_max:1500, C_regularise:0, C_prepay:0, C_biasCR:90,  C_bias:0,    C_shortfall:'miss',
-  D_min:-2000, D_max:1000, D_regularise:1, D_prepay:0, D_biasCR:90,  D_bias:700,  D_shortfall:'miss',
-  E_min:-2500, E_max:1000, E_regularise:0, E_prepay:0, E_biasCR:90,  E_bias:0,    E_shortfall:'miss',
+  A_min:-2000, A_max:2000, A_regularise:1, A_shortfall:'miss',
+  B_min:-2000, B_max:2000, B_regularise:1, B_shortfall:'miss',
+  C_min:-2000, C_max:2000, C_regularise:0, C_shortfall:'miss',
+  D_min:-2000, D_max:2000, D_regularise:1, D_shortfall:'miss',
+  E_min:-2000, E_max:2000, E_regularise:0, E_shortfall:'miss',
+
+  /* --- effort bias: extra weekly net income once the rating falls below a tier --- */
+  biasWhen:'always',
+  bias1CR:90, A_bias1:500,  B_bias1:300, C_bias1:0,   D_bias1:0,   E_bias1:0,
+  bias2CR:80, A_bias2:700,  B_bias2:500, C_bias2:300, D_bias2:300, E_bias2:0,
+  bias3CR:70, A_bias3:900,  B_bias3:700, C_bias3:300, D_bias3:500, E_bias3:0,
+  bias4CR:60, A_bias4:1200, B_bias4:900, C_bias4:500, D_bias4:700, E_bias4:0,
 
   /* --- pillow bank thresholds --- */
   lendAbove: 1000,
@@ -453,61 +529,89 @@ const DEFAULTS = {
   /* --- loans --- */
   loanAmounts: '1000,2000,3000,4000,5000',
   maxPrincipal: 10000,
+  tenure1: 4, tenure2: 13, tenure3: 26,
 
   /* --- rating bands and loan ceilings --- */
-  maxLoans: 4, cr75: 75, maxLoansAt75: 3, cr65: 65, maxLoansAt65: 2, crNoLoan: 50,
+  maxLoans: 4,
+  band1CR: 70, band1Max: 3,
+  band2CR: 60, band2Max: 2,
+  band3CR: 55, band3Max: 1,
+  crNoLoan: 50,
 
   /* --- credit rating --- */
-  crStart: 100, crCap: 100, crFloor: -100, riskyBelow: 75, crScope: 'person',
-  crUpMode:'week',   crUp: 3,   crUpPer: 1000,
-  crDownMode:'week', crDown: 6, crDownPer: 1000,
+  crStart: 85, crCap: 100, crFloor: 0, riskyBelow: 75,
+  crBasis: 'sum',
 
-  /* --- interest --- */
-  irBase: 20, irStep: 2, irBand: 5, irPeriod: 'year', irMode: 'reducing'
+  /* --- rating movement (points, judged once per person per week) --- */
+  crPaidClean: 1,  crMissClean: 3,
+  crPaidDef: 0.5,  crMissDef: 3,  crIdleDef: 0,
+  clr1: 25,  crClr1: 1,
+  clr2: 50,  crClr2: 1.5,
+  clr3: 75,  crClr3: 2,
+  clr4: 100, crClr4: 2.5,
+
+  /* --- default interest (penalty on the amount in default) --- */
+  defRate: 0.5, defStep: 0.1, defEvery: 4, defReset: 25, defCap: 0,
+
+  /* --- interest on fresh loans --- */
+  irBase: 20, irRefCR: 85, irStep: 2, irBand: 5, irRound: 'full', irPeriod: 'year', irMode: 'reducing'
 };
 
-const TENURES = [4,8,12];
 
 const FORM = [
   { title:'Population', fields:[
     {k:'perSubgroup', l:'Participants per archetype', t:'num', min:1, max:60, step:1, h:'5 gives 30 people per group, 150 in total.'},
     {k:'runs', l:'Repetitions to average', t:'num', min:1, max:50, step:1, h:'Runs the same settings several times and averages.'}
   ]},
-  { title:'Group parameters', table:'cats', note:'One row per behaviour group. Min and max bound the random amount each person earns or loses every week. Regularises means they clear arrears whenever the money is there. Bias is extra weekly earning that starts once they fall behind and their rating drops below the trigger, and stops when they are square again. On shortfall decides what happens when the pillow bank cannot cover an instalment.' },
-  { title:'Rating bands and loan ceilings', table:'limits', note:'How many loans a person may hold at once, by rating. This gates new borrowing only \u2014 loans already running are never called in, so someone whose rating slips keeps the loans they have and simply cannot take more.' },
+  { title:'Group parameters', table:'cats', note:'One row per behaviour group. Min and max bound the random net income each person earns or loses every week. Regularises means they clear arrears whenever the money is there. On shortfall decides what happens when the pillow bank cannot cover an instalment.' },
+  { title:'Effort bias \u2014 extra weekly net income as the rating falls', table:'bias', note:'People cut spending or earn more when their rating slips. Each week the deepest tier the rating sits below applies; when the rating climbs back above a tier, the extra effort drops back with it.' },
+  { title:'Effort bias \u2014 when it applies', fields:[
+    {k:'biasWhen', l:'Bias switches on', t:'select', opts:[['always','Whenever the rating is below a tier'],['default','Only while also in default']], h:'The first follows the rule as written. The second is the older behaviour.'}
+  ]},
   { title:'Pillow bank thresholds', fields:[
     {k:'lendAbove', l:'Must lend above (\u20B9)', t:'num', min:0, max:1000000, step:100, h:'Above this, the spare cash has to be lent out.'},
     {k:'borrowBelow', l:'Must borrow below (\u20B9)', t:'num', min:-1000000, max:0, step:100, h:'At or below this, the person has to borrow.'}
   ]},
   { title:'Loans', fields:[
-    {k:'loanAmounts', l:'Loan sizes available (\u20B9)', t:'text', h:'Comma separated. A borrower takes whichever size lands them back between the two thresholds.'},
-    {k:'maxPrincipal', l:'Maximum total borrowing (\u20B9)', t:'num', min:1000, max:1000000, step:1000, h:'Across all open loans together, not per loan.'}
+    {k:'loanAmounts', l:'Loan sizes available (\u20B9)', t:'text', h:'Comma separated. A borrower takes the smallest size that covers this week\u2019s instalments, which lands them back between the two thresholds. If no lender can fund it, they take the largest smaller size someone can.'},
+    {k:'maxPrincipal', l:'Maximum total borrowing (\u20B9)', t:'num', min:1000, max:1000000, step:1000, h:'Across all open loans together, not per loan.'},
+    {k:'tenure1', l:'Loan period \u2014 short (weeks)', t:'num', min:1, max:260, step:1, h:'Archetypes ending in 1 ask for this.'},
+    {k:'tenure2', l:'Loan period \u2014 medium (weeks)', t:'num', min:1, max:260, step:1, h:'Archetypes ending in 2 ask for this.'},
+    {k:'tenure3', l:'Loan period \u2014 long (weeks)', t:'num', min:1, max:260, step:1, h:'Archetypes ending in 3 ask for this.'}
   ]},
+  { title:'Rating bands and loan ceilings', table:'limits', note:'How many loans a person may hold at once, by rating. This gates new borrowing only \u2014 loans already running are never called in, so someone whose rating slips keeps the loans they have and simply cannot take more.' },
   { title:'Credit rating', fields:[
-    {k:'crStart', l:'Opening rating', t:'num', min:0, max:1000, step:1, h:'Everyone starts here. The only way back up is clearing arrears.'},
-    {k:'riskyBelow', l:'Borrower counts as risky below', t:'num', min:-1000, max:100, step:1, h:'Cautious lenders refuse anyone under this. Risk-takers lend regardless.'},
-    {k:'crScope', l:'Rating judged', t:'select',
-      opts:[['person','Per account \u2014 one arrear stops all credit'],
-            ['loan','Per instalment \u2014 each loan judged on its own']],
-      h:'Pay two instalments and miss one. Per instalment gives +3 +3 \u22126. Per account gives \u22126 only.'}
+    {k:'crStart', l:'Opening rating', t:'num', min:0, max:1000, step:1, h:'Everyone starts here.'},
+    {k:'crCap', l:'Highest possible rating', t:'num', min:0, max:1000, step:1, h:'The rating never goes above this.'},
+    {k:'crFloor', l:'Lowest possible rating', t:'num', min:-1000, max:1000, step:1, h:'The rating never goes below this.'},
+    {k:'riskyBelow', l:'Borrower counts as risky below', t:'num', min:-1000, max:1000, step:1, h:'Cautious lenders refuse anyone under this. Risk-takers lend regardless.'}
   ]},
-  { title:'Rating movement', table:'cr', note:'A missed instalment is charged again every week until it is cleared, so a default costs more the longer it stands. Basis decides what one event is worth: once a week whatever the count, once per instalment, or scaled by the amount outstanding. The rise is credited for paying on time and for clearing arrears; prepaying never moves it.' },
-  { title:'Interest', fields:[
-    {k:'irBase', l:'Rate at the top rating (%)', t:'num', min:0, max:200, step:0.5, h:'What a rating of 100 pays. Every rating below pays more.'},
-    {k:'irStep', l:'Rate rises by (%)', t:'num', min:0, max:50, step:0.5, h:'Added once for each band the rating has fallen.'},
-    {k:'irBand', l:'\u2026 for every fall of this many rating points', t:'num', min:1, max:100, step:1, h:'Band width. At 5, a rating of 94 is two bands down and pays two steps more.'},
+  { title:'Rating movement \u2014 how it is counted', fields:[
+    {k:'crBasis', l:'Loan points are', t:'select', opts:[['sum','Summed over instalments'],['avg','Averaged over instalments']], h:'Every loan is scored on its own each week. Summed: the points are added up, so more loans means bigger moves in both directions. Averaged: the total is divided by the number of loans scored that week, so the move never goes beyond what a single loan can earn. Three loans in default, one paid and two missed: summed +0.5 \u22123 \u22123 = \u22125.5; averaged \u22125.5 \u00F7 3 = \u22121.83.'}
+  ]},
+  { title:'Rating movement', table:'cr', note:'Each loan is scored by how that loan opened the week, in default or not, and what happened to it during the week. A missed instalment always scores the miss. Paying down a default: once this week\u2019s instalments are paid, groups that regularise pay the largest share of each loan\u2019s default they can afford \u2014 100%, 75%, 50% or 25%, the shares set here \u2014 measured against what that loan owed in default at the start of the week. The share reached earns its tier, which replaces the +0.5 for paying the instalment rather than adding to it. The loan scores are then summed or averaged, as set above.' },
+  { title:'Default interest', fields:[
+    {k:'defRate', l:'Weekly rate on the amount in default (%)', t:'num', min:0, max:100, step:0.05, h:'Compounded weekly. 0.5% a week is about 26% a year.'},
+    {k:'defStep', l:'Rate rises by (% a week)', t:'num', min:0, max:100, step:0.05, h:'Added once the default has stood longer than the period below, and again for every further period.'},
+    {k:'defEvery', l:'\u2026 for every this many weeks in default', t:'num', min:1, max:260, step:1, h:'At 4: weeks 1\u20134 at the base rate, weeks 5\u20138 one step up, weeks 9\u201312 two steps up.'},
+    {k:'defCap', l:'Highest weekly rate allowed (%)', t:'num', min:0, max:100, step:0.1, h:'0 means no ceiling: the rate keeps climbing for as long as the default stands (1.7% a week after a year at the settings above).'},
+    {k:'defReset', l:'Rate resets once this share is cleared (%)', t:'num', min:0, max:100, step:1, h:'Paying this share of a loan\u2019s outstanding default in one week sends its rate back to the base and restarts the clock.'}
+  ]},
+  { title:'Interest on fresh loans', fields:[
+    {k:'irBase', l:'Rate at or above the reference rating (%)', t:'num', min:0, max:200, step:0.5, h:'What a good rating pays.'},
+    {k:'irRefCR', l:'Reference rating', t:'num', min:0, max:1000, step:1, h:'Ratings at or above this pay the base rate.'},
+    {k:'irStep', l:'Rate rises by (%)', t:'num', min:0, max:50, step:0.5, h:'Added once for each band the rating has fallen below the reference.'},
+    {k:'irBand', l:'\u2026 for every fall of this many rating points', t:'num', min:1, max:100, step:1, h:'Band width.'},
+    {k:'irRound', l:'When the rate steps up', t:'select', opts:[['full','Only after a full band has been lost'],['partial','As soon as the rating dips into a band']], h:'With a reference of 85 and bands of 5: a rating of 83 pays 20% under the first choice (it has not yet lost a full 5 points) but 22% under the second. At 80 both pay 22%; at 78 the first pays 22% and the second 24%. Only new loans are affected.'},
     {k:'irPeriod', l:'Quoted rate is', t:'select', opts:[['year','per year'],['month','per month'],['term','one charge for the whole loan']], h:'Per year makes interest tiny on a loan of a few weeks. This changes results more than any other setting.'},
     {k:'irMode', l:'Interest charged on', t:'select', opts:[['reducing','balance outstanding'],['flat','original loan amount']], h:'Balance outstanding shrinks as the loan is repaid, so interest falls week by week. Original amount does not.'}
   ]}
 ];
 
 const CATFIELDS = [
-  {k:'_min', c:'Min weekly surplus (\u20B9)', t:'num', min:-100000, max:100000, step:100},
-  {k:'_max', c:'Max weekly surplus (\u20B9)', t:'num', min:-100000, max:100000, step:100},
+  {k:'_min', c:'Min weekly net income (\u20B9)', t:'num', min:-100000, max:100000, step:100},
+  {k:'_max', c:'Max weekly net income (\u20B9)', t:'num', min:-100000, max:100000, step:100},
   {k:'_regularise', c:'Regularises', t:'select', opts:[['1','Yes'],['0','No']]},
-  {k:'_prepay', c:'Prepayment rate (%)', t:'num', min:0, max:100, step:1},
-  {k:'_biasCR', c:'Surplus bias below rating', t:'num', min:-1000, max:1000, step:1},
-  {k:'_bias', c:'Surplus bias (\u20B9)', t:'num', min:0, max:100000, step:100},
   {k:'_shortfall', c:'On shortfall', t:'select', opts:[['miss','Instalment missed'],['pay','Paid regardless']]}
 ];
 
@@ -526,97 +630,158 @@ function shuffle(a,rng){for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(
 function nearestTenure(pref,list){let best=list[0];for(const t of list){const d=Math.abs(t-pref),b=Math.abs(best-pref);if(d<b||(d===b&&t<best))best=t;}return best;}
 function rupees(n){const s=Math.round(n).toLocaleString('en-IN');return '\u20B9'+s;}
 function rupees0(n){return (n<0?'\u2212':'')+'\u20B9'+Math.abs(Math.round(n)).toLocaleString('en-IN');}
-/* NEW: rupees to the paisa, for the audit log, so the arithmetic can be checked */
+/* rupees to the paisa, for the audit log, so the arithmetic can be checked */
 function rs2(n){
   let v=Math.round(n*100)/100; if(Math.abs(v)<0.005) v=0;
   return (v<0?'\u2212':'')+'\u20B9'+Math.abs(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function rs2s(n){ return (Math.round(n*100)/100>0?'+':'')+rs2(n); }
-function loanTag(L){ return 'Loan #'+L.id; }
+function n1(x){ return Math.round(x*10)/10; }
+/* MONEY IS KEPT TO THE PAISA. Every instalment, default-interest charge and
+   payment is rounded to whole paise when it is created, so every figure in
+   the event log is exact and can be added up by hand. */
+const EPS = 0.005;                                   /* half a paisa */
+function r2(x){ const v=Math.round(x*100+(x>=0?1e-7:-1e-7))/100; return Math.abs(v)<EPS?0:v; }
+function ceil2(x){ return Math.ceil(x*100-1e-7)/100; }
+/* Loans are described by amount and the week they were taken - no internal
+   numbers. One borrower takes at most one loan a week, so amount + week +
+   the counterparty always identifies a loan uniquely. */
+function loanTag(L){ return 'the '+rupees0(L.principal)+' loan (week '+L.week+')'; }
 function plural(n,w){ return n+' '+w+(n===1?'':'s'); }
 
 function structured(raw){
   const C = Object.assign({},raw);
-  ['runs','perSubgroup','lendAbove','borrowBelow','maxLoans','cr75','maxLoansAt75','cr65','maxLoansAt65',
-   'crNoLoan','maxPrincipal','crStart','crCap','crFloor','riskyBelow','crUp','crUpPer','crDown','crDownPer',
-   'irBase','irStep','irBand'].forEach(k=>C[k]=parseFloat(C[k]));
+  Object.keys(DEFAULTS).forEach(k=>{ if(typeof DEFAULTS[k]==='number'){ const v=parseFloat(raw[k]); C[k]=isNaN(v)?DEFAULTS[k]:v; } });
   C.perCategory = Math.max(1, Math.round(C.perSubgroup)) * 6;
   C.amounts = String(raw.loanAmounts).split(',').map(s=>parseInt(s.trim(),10)).filter(n=>n>0).sort((a,b)=>a-b);
   if(!C.amounts.length) C.amounts=[1000];
-  C.tenures = TENURES.slice();
-  C.irMode = String(raw.irMode); C.irPeriod = String(raw.irPeriod);
-  C.crScope = String(raw.crScope);
+  C.tenures = [C.tenure1, C.tenure2, C.tenure3].map(t=>Math.max(1,Math.round(t)));
+  C.irMode = String(raw.irMode); C.crBasis = String(raw.crBasis)==='avg' ? 'avg' : 'sum'; C.irPeriod = String(raw.irPeriod); C.irRound = String(raw.irRound);
+  C.biasWhen = String(raw.biasWhen);
+  C.defEvery = Math.max(1, Math.round(C.defEvery));
+  /* loan ceilings, highest band first */
+  C.bands = [1,2,3].map(i=>({below:C['band'+i+'CR'], max:Math.max(0,Math.round(C['band'+i+'Max']))}))
+                   .sort((a,b)=>b.below-a.below);
+  /* effort-bias tiers, highest threshold first so the deepest one breached wins */
+  C.biasTiers = [1,2,3,4].map(i=>{ const amt={}; CATS.forEach(k=>amt[k]=C[k+'_bias'+i]); return {cr:C['bias'+i+'CR'], amt}; })
+                         .sort((a,b)=>b.cr-a.cr);
+  /* default-clearing tiers, largest share first */
+  C.clearTiers = [1,2,3,4].map(i=>({frac:C['clr'+i]/100, pts:C['crClr'+i]})).filter(t=>t.frac>0)
+                          .sort((a,b)=>b.frac-a.frac);
   C.cat={};
   CATS.forEach(k=>{C.cat[k]={
-    min:parseFloat(raw[k+'_min']), max:parseFloat(raw[k+'_max']),
-    prepay:parseFloat(raw[k+'_prepay'])/100,
+    min:C[k+'_min'], max:C[k+'_max'],
     regularise: String(raw[k+'_regularise'])==='1',
-    biasCR:parseFloat(raw[k+'_biasCR']), bias:parseFloat(raw[k+'_bias']),
     shortfall: String(raw[k+'_shortfall'])
   };});
   return C;
 }
 
+/* Interest on a FRESH loan. Loans already running keep the rate they were written at. */
 function irFor(cr,C){
-  if(cr>=100) return C.irBase;
-  return C.irBase + C.irStep*Math.ceil((100-cr)/C.irBand);
+  const fall = C.irRefCR - cr;
+  if(fall<=0) return C.irBase;
+  const bands = C.irRound==='partial' ? Math.ceil(fall/C.irBand - 1e-9) : Math.floor(fall/C.irBand + 1e-9);
+  return C.irBase + C.irStep*bands;
 }
 function maxLoansFor(cr,C){
-  if(cr<C.cr65) return C.maxLoansAt65;
-  if(cr<C.cr75) return C.maxLoansAt75;
-  return C.maxLoans;
+  let m = C.maxLoans;
+  for(const b of C.bands) if(cr < b.below) m = b.max;
+  if(cr < C.crNoLoan) m = 0;
+  return m;
 }
-const TDIGIT={4:'1',8:'2',12:'3'};
+/* default interest rate (% a week) for a loan that has been in default for `age` weeks */
+function defRateFor(age,C){
+  const r = C.defRate + C.defStep*Math.floor(Math.max(0,age-1)/Math.max(1,C.defEvery));
+  return C.defCap>0 ? Math.min(r, C.defCap) : r;
+}
+const TDIGIT=['1','2','3'];
 const ARCHETYPES=[];
-[false,true].forEach(rt=>TENURES.forEach(t=>ARCHETYPES.push({riskTaker:rt, prefTenure:t})));
+[false,true].forEach(rt=>[0,1,2].forEach(t=>ARCHETYPES.push({riskTaker:rt, tIdx:t})));
 function makeSubtypes(n){
   const out=[];
   for(let i=0;i<n;i++) out.push(ARCHETYPES[i%ARCHETYPES.length]);
   return out;
 }
 function owedNow(p){let s=0;for(const L of p.loans) if(L.open) s+=L.outstanding; return s;}
+function owedToMe(p){let s=0;for(const L of p.given) if(L.open) s+=L.outstanding; return s;}
+function owedFull(list){
+  let pr=0, it=0, df=0;
+  for(const L of list) if(L.open){ pr+=Math.max(0,L.outstanding-L.arrP); it+=remIntSched(L); df+=L.arrP+L.arrI; }
+  pr=r2(pr); it=r2(it); df=r2(df);
+  return {pr, it, df, tot:r2(pr+it+df)};
+}
+function owedTxt(o){
+  const parts=[]; if(o.pr>EPS) parts.push(rs2(o.pr)+' principal'); if(o.it>EPS) parts.push(rs2(o.it)+' interest to come'); if(o.df>EPS) parts.push(rs2(o.df)+' in default');
+  return rs2(o.tot)+(parts.length>1?' ('+parts.join(' + ')+')':parts.length?' '+parts[0].replace(/^₹[\d,.]+ /,''):'');
+}
+/* a loan-book line: what is still to come on schedule, then what is in default */
+function bookTxt(L, keep, d){
+  const it=r2(remIntSched(L)), sched=r2(keep+it), left=Math.max(0,L.schedLeft);
+  const onSched = sched>EPS ? owedTxt({pr:keep,it,df:0,tot:sched})+' over '+plural(left,'instalment') : '';
+  const inDef = d>EPS ? arrSplit(L,true).replace(/^(₹[\d,.]+) /,'$1 in default ') : '';
+  return (onSched && inDef ? onSched+', plus '+inDef : onSched || inDef || rs2(0))+(left===0 && d>EPS ? '; term over' : '');
+}
+function splitTxt(pairs){ const p=pairs.filter(x=>x[0]>EPS).map(x=>rs2(x[0])+' '+x[1]); return p.length>1?' ('+p.join(' + ')+')':''; }
 function arrearsOf(p){let s=0;for(const L of p.loans) if(L.open) s+=L.arrP+L.arrI; return s;}
 function missesOf(p){let n=0;for(const L of p.loans) if(L.open) n+=L.arrN; return n;}
-function exposure(p){
-  return (p.owedAtStart!==undefined && p.owedAtStart>0) ? p.owedAtStart : owedNow(p);
+/* what is in default on a loan, split into unpaid instalments and unpaid default interest */
+function arrSplit(L, noWeek){
+  const tot=r2(L.arrP+L.arrI), pen=r2(L.arrPen||0), miss=r2(tot-pen);
+  /* "of which ... this week" is only shown while nothing has been paid toward the
+     default this week; once payments start, rows show just what is left */
+  const wk=r2(L.penWeek||0);
+  const note = (!noWeek && wk>EPS && (L.defPaidWeek||0)<=EPS) ? ', of which '+rs2(wk)+' was charged this week' : '';
+  return rs2(tot)+' ('+rs2(miss)+' of missed instalments + '+rs2(pen)+' default interest'+note+')';
 }
-function crMove(p, dir, C, count){
-  const n = (count===undefined) ? 1 : count;
-  if(n<=0) return;
-  const pts  = dir==='up' ? C.crUp : -C.crDown;
-  const mode = dir==='up' ? C.crUpMode : C.crDownMode;
-  const per  = dir==='up' ? C.crUpPer  : C.crDownPer;
-  let units;
-  if(mode==='instalment')          units = n;
-  else if(mode==='amount' && per>0) units = Math.ceil(exposure(p)/per);
-  else                              units = 1;
-  p.cr = Math.max(C.crFloor, Math.min(C.crCap, p.cr + pts*units));
+function crAdd(p, pts, C){
+  p.cr = Math.max(C.crFloor, Math.min(C.crCap, p.cr + pts));
+}
+/* interest still to come on the schedule (instalments not yet due) */
+function remIntSched(L){
+  let s=0; for(let k=L.tenure-L.schedLeft;k<L.tenure;k++) if(L.sched[k]) s+=L.sched[k].i; return s;
+}
+/* NET BALANCE SHEET
+   pillow bank
+   + principal and scheduled interest still to be received on loans given, EXCLUDING anything in default
+   - principal and scheduled interest still to be paid on loans taken, INCLUDING everything in default
+     (missed instalments plus the default interest built up on them) */
+function netSheet(p){
+  let recv=0, owe=0, defOwed=0, defDue=0;
+  for(const L of p.given) if(L.open){ recv += Math.max(0,L.outstanding-L.arrP) + remIntSched(L); defDue += L.arrP+L.arrI; }
+  for(const L of p.loans) if(L.open){ owe += Math.max(0,L.outstanding-L.arrP) + remIntSched(L) + L.arrP + L.arrI; defOwed += L.arrP+L.arrI; }
+  return {recv, owe, defOwed, defDue, net:p.pb+recv-owe};
 }
 
 /* ================= the engine ================= */
-const ACC=['made','madeValue','blocked','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind','arrearsP','arrearsPStuck'];
+const ACC=['penaltyWeek','made','madeValue','blocked','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind','arrearsP','arrearsPStuck','defaultOwed','penaltyCum','netTotal'];
+const BYF=['pb','cr','def','lock','ip','ie','la','nb','dout','n'];
+const newBy=()=>{const o={}; BYF.forEach(f=>o[f]=0); return o;};
 
 function createRun(C, seed, keepDetail){
   const S = { C, rng:trueRandom(), people:[], idx:{}, allLoans:[], weekly:[],
-              cumPaid:0, cumEarned:0, loanSeq:0, week:0, keepDetail,
-              cats: CATS.slice() };
+              cumPaid:0, cumEarned:0, penaltyCum:0, loanSeq:0, week:0, keepDetail,
+              surplusTotal:0, cats: CATS.slice() };
   let pid=0;
   for(const k of S.cats){
     const plan = makeSubtypes(C.perCategory);
     const seen = {};
     for(const sp of plan){
-      const code = k + (sp.riskTaker?'2':'1') + TDIGIT[sp.prefTenure];
+      const code = k + (sp.riskTaker?'2':'1') + TDIGIT[sp.tIdx];
       seen[code]=(seen[code]||0)+1;
       const p = {
         id:pid, cat:k, code, name:code+'-'+seen[code],
-        riskTaker: sp.riskTaker, prefTenure: sp.prefTenure,
-        pb:0, cr:C.crStart, biasOn:false, inDefault:false,
-        loans:[], given:[], interestPaid:0, interestEarned:0,
+        riskTaker: sp.riskTaker, prefTenure: C.tenures[sp.tIdx],
+        pb:0, cr:C.crStart, biasOn:false, biasAmt:0, inDefault:false,
+        def0:0, missedThisWeek:0, nb:0, nbRecv:0, nbOwe:0, defOwed:0, penaltyPaid:0,
+        loans:[], given:[], interestPaid:0, interestEarned:0, penCharged:0, penAccrued:0,
         loansTaken:0, loansGiven:0, borrowed:0, lent:0, onTimeThisWeek:0, recoveredThisWeek:0, owedAtStart:0,
-        paid:0, missed:0, weeksBehind:0, refused:0,
+        paid:0, missed:0, weeksBehind:0, refused:0, riskRefused:[],
+        capAtOpen:0, rateAtOpen:0, crAtOpen:C.crStart,
         weekSurplus:0, prePb:0, weekOpen:0, flow:0,
         pbSeries:[], crSeries:[], ipSeries:[], ieSeries:[], defSeries:[], lockSeries:[], log:[],
-        surplusSeries:[], prePbSeries:[], openSeries:[], laSeries:[], lentArrearsP:0
+        surplusSeries:[], prePbSeries:[], openSeries:[], laSeries:[], lentArrearsP:0,
+        nbSeries:[], doutSeries:[], biasSeries:[]
       };
       S.people.push(p); S.idx[pid]=p; pid++;
     }
@@ -625,24 +790,17 @@ function createRun(C, seed, keepDetail){
 }
 
 function buildSchedule(amt, r, tenure, emi, mode){
-  const sched=[]; let bal=amt;
+  /* the weekly payment is rounded to the paisa; interest each week is rounded
+     to the paisa; the principal part is whatever is left of the payment; the
+     last instalment takes whatever principal remains, so the principal repaid
+     always adds up to exactly the amount lent */
+  const pay=r2(emi), sched=[]; let bal=amt;
   for(let k=0;k<tenure;k++){
-    const iDue = (mode==='flat' ? amt : bal) * r;
-    const pDue = (k===tenure-1) ? bal : Math.min(Math.max(0, emi - iDue), bal);
-    sched.push({p:pDue, i:iDue}); bal -= pDue;
+    const iDue = r2((mode==='flat' ? amt : bal) * r);
+    const pDue = (k===tenure-1) ? r2(bal) : r2(Math.min(Math.max(0, pay - iDue), bal));
+    sched.push({p:pDue, i:iDue}); bal = r2(bal - pDue);
   }
   return sched;
-}
-function reschedule(L, C){
-  const k = L.tenure - L.schedLeft, left = L.schedLeft;
-  if(left<=0) return;
-  const bal = Math.max(0, L.outstanding - L.arrP);
-  const emi = (C.irMode==='flat')
-    ? (bal + bal*L.r*left)/left
-    : (L.r>0 ? bal*L.r/(1-Math.pow(1+L.r,-left)) : bal/left);
-  const fresh = buildSchedule(bal, L.r, left, emi, C.irMode);
-  for(let i=0;i<left;i++) L.sched[k+i]=fresh[i];
-  L.emi = emi;
 }
 function instalment(L, C){
   const k = L.tenure - L.schedLeft;
@@ -654,41 +812,82 @@ function instalment(L, C){
 function stepWeek(S){
   const C=S.C, rng=S.rng, people=S.people, idx=S.idx, allLoans=S.allLoans;
   const w = ++S.week;
-  const LOGCAP = 100000;
-  /* NEW: structured log entries {w, txt, kind, amt?, before?, bal?} */
+  const LOGCAP = 200000;
+  /* structured log entries {w, txt, kind, amt?, before?, bal?} */
   const note = S.keepDetail
     ? (p,txt,x)=>{ if(p.log.length<LOGCAP) p.log.push(Object.assign({w,txt,kind:'info'},x||{})); }
     : ()=>{};
-  /* NEW: the ONLY way a pillow bank changes. Records before / change / after. */
+  /* the ONLY way a pillow bank changes. Records before / change / after. */
   const move = (p, amt, txt, kind) => {
     const before = p.pb;
-    p.pb += amt; p.flow += amt;
+    p.pb = r2(p.pb + amt); p.flow = r2(p.flow + amt);
     if(S.keepDetail && p.log.length<LOGCAP) p.log.push({w, txt, kind:kind||'money', amt, before, bal:p.pb});
   };
 
-  /* ---- OPENING ROW (NEW) ---- */
+  /* ---- OPENING ROW ---- */
   for(const p of people){
-    p.weekOpen = p.pb; p.flow = 0;
+    p.weekOpen = p.pb; p.flow = 0; p.riskRefused = [];
+    p.crAtOpen = p.cr; p.capAtOpen = maxLoansFor(p.cr,C); p.rateAtOpen = irFor(p.cr,C);
     if(S.keepDetail){
       const tk = p.loans.filter(L=>L.open).length, gv = p.given.filter(L=>L.open).length;
-      note(p,'Start of week '+w+': pillow bank carried in '+rs2(p.pb)+'. Credit rating '+(Math.round(p.cr*10)/10)+
-        '. Open loans: '+tk+' taken (owing '+rs2(owedNow(p))+', of which arrears '+rs2(arrearsOf(p))+'), '+gv+' given.',
-        {kind:'start', bal:p.pb});
+      note(p,'Opening balance '+rs2(p.pb)+'.'+
+        (tk?' You owe '+owedTxt(owedFull(p.loans))+'.':'')+(gv?' Owed to you '+owedTxt(owedFull(p.given))+'.':''),
+        {kind:'start', bal:p.pb, owe:owedFull(p.loans).tot, owedToYou:owedFull(p.given).tot});
     }
   }
 
   /* ---- STAGE 1: WEEKLY SURPLUS OR DEFICIT ---- */
   for(const p of people){
     const cc=C.cat[p.cat];
-    if(cc.bias>0 && p.cr<cc.biasCR && p.inDefault && !p.biasOn){
-      p.biasOn=true;
-      note(p,'Rating '+(Math.round(p.cr*10)/10)+' is below the bias trigger of '+cc.biasCR+' while in default: extra earning of '+rs2(cc.bias)+' a week switches on.');
+    let b=0, tier=null;
+    if(C.biasWhen==='always' || p.inDefault){
+      for(const t of C.biasTiers) if(p.cr < t.cr){ b=t.amt[p.cat]||0; tier=t; }
     }
-    const b = p.biasOn?cc.bias:0;
+    if(Math.abs(b-p.biasAmt)>1e-9){
+      if(b>0) note(p,'Extra effort: +'+rs2(b)+' a week'+(p.biasAmt>0?' (was +'+rs2(p.biasAmt)+')':'')+'.', {kind:'bias'});
+      else note(p,'Extra effort stops.', {kind:'bias'});
+    }
+    p.biasAmt=b; p.biasOn=b>0;
     const drawn = ri(rng, cc.min+b, cc.max+b);
-    move(p, drawn, (drawn>=0?'Weekly surplus':'Weekly deficit')+' drawn from the range '+rs2(cc.min+b)+' to '+rs2(cc.max+b)+
-      (b?' (includes bias of +'+rs2(b)+')':'')+'.', 'surplus');
+    S.surplusTotal += drawn;
+    move(p, drawn, (drawn>=0?'Weekly surplus of '+rs2(drawn):'Weekly deficit of '+rs2(-drawn))+(b?' (including +'+rs2(b)+' extra effort)':'')+'.', 'surplus');
     p.weekSurplus = drawn;
+  }
+
+  /* ---- STAGE 2a: DEFAULT INTEREST ON AMOUNTS ALREADY IN DEFAULT ----
+     Compounded weekly on missed principal + missed interest + earlier default interest.
+     The rate steps up the longer a loan's default stands, and resets in stage 5
+     once enough of it is cleared in a single week. */
+  for(const p of people){ p.def0=0; p.missedThisWeek=0; p.penWeekCharged=0; p.penWeekAccrued=0; }
+  let penWeekTotal=0;
+  for(const L of allLoans){
+    L.defPaidWeek=0; L.def0=0; L.paidWk=0; L.missWk=0; L.penWeek=0;
+    if(!L.open) continue;
+    const owed=L.arrP+L.arrI;
+    if(owed<=EPS){ L.defAge=0; continue; }
+    L.defAge=(L.defAge||0)+1;
+    const rate=defRateFor(L.defAge,C), pen=r2(owed*rate/100);
+    L.arrI=r2(L.arrI+pen); L.penTotal=r2((L.penTotal||0)+pen); S.penaltyCum+=pen;
+    L.arrPen=r2((L.arrPen||0)+pen); L.penWeek=pen; penWeekTotal=r2(penWeekTotal+pen);
+    /* one "default" runs from the first missed instalment until its arrears are fully cleared */
+    L.penSpell=r2((L.penSpell||0)+pen); L.spellWeeks=(L.spellWeeks||0)+1;
+    idx[L.bId].penCharged=r2(idx[L.bId].penCharged+pen); idx[L.lId].penAccrued=r2(idx[L.lId].penAccrued+pen);
+    idx[L.bId].penWeekCharged=r2(idx[L.bId].penWeekCharged+pen); idx[L.lId].penWeekAccrued=r2(idx[L.lId].penWeekAccrued+pen);
+    L.def0=r2(L.arrP+L.arrI);
+    idx[L.bId].def0+=L.def0;
+    if(S.keepDetail){
+      const b=idx[L.bId], l=idx[L.lId];
+      const lvl = Math.floor((L.defAge-1)/C.defEvery), toNext = (lvl+1)*C.defEvery+1-L.defAge;
+      const nextRate = defRateFor(L.defAge+toNext, C);
+      const rises = (C.defStep>0 && nextRate>rate+1e-9) ? ' Rate rises to '+nextRate.toFixed(2)+'% in week '+(w+toNext)+'.' : '';
+      const calc = ' '+rs2(pen)+' ('+rate.toFixed(2)+'% of '+rs2(owed)+') on '+loanTag(L);
+      note(b,'Default interest'+calc+' to '+l.name+', in default since week '+L.spellStart+' ('+plural(L.spellWeeks,'week')+
+        '). Owed in default before this week\u2019s payments: '+arrSplit(L)+'.'+rises,
+        {kind:'penalty', side:'borrower', loanId:L.id, defAge:L.defAge, rate, pen, owed, spellStart:L.spellStart, spellWeeks:L.spellWeeks});
+      note(l,'Default interest'+calc+' lent to '+b.name+', in default since week '+L.spellStart+
+        '. Owed to you in default before this week\u2019s payments: '+arrSplit(L)+'.',
+        {kind:'penalty', side:'lender', loanId:L.id, pen});
+    }
   }
 
   /* ---- STAGE 2: WHAT FALLS DUE THIS WEEK ---- */
@@ -701,13 +900,8 @@ function stepWeek(S){
     dues.get(L.bId).push({L, pDue:d.pDue, iDue:d.iDue, no});
     if(S.keepDetail){
       const b=idx[L.bId], l=idx[L.lId];
-      note(b, 'Due this week: instalment '+no+' of '+L.tenure+' on '+loanTag(L)+' (borrowed '+rs2(L.principal)+' from '+l.name+') \u2014 principal '+rs2(d.pDue)+' + interest '+rs2(d.iDue)+' = '+rs2(d.pDue+d.iDue)+'.', {kind:'due'});
-      note(l, 'Due to you this week: instalment '+no+' of '+L.tenure+' on '+loanTag(L)+' (lent '+rs2(L.principal)+' to '+b.name+') \u2014 '+rs2(d.pDue+d.iDue)+'.', {kind:'due'});
-    }
-  }
-  if(S.keepDetail) for(const L of allLoans){
-    if(L.open && L.schedLeft<=0){
-      note(idx[L.bId], loanTag(L)+' to '+idx[L.lId].name+': term has ended, nothing new falls due, but '+rs2(L.arrP+L.arrI)+' of arrears still stands.', {kind:'due'});
+      note(b, 'Due: instalment '+no+' of '+L.tenure+' on '+loanTag(L)+' to '+l.name+', '+rs2(d.pDue+d.iDue)+splitTxt([[d.pDue,'principal'],[d.iDue,'interest']])+'.', {kind:'due'});
+      note(l, 'Due to you: instalment '+no+' of '+L.tenure+' on '+loanTag(L)+' from '+b.name+', '+rs2(d.pDue+d.iDue)+'.', {kind:'due'});
     }
   }
   const dueTotal = id => (dues.get(id)||[]).reduce((s,d)=>s+d.pDue+d.iDue,0);
@@ -716,7 +910,7 @@ function stepWeek(S){
     if(l.pb <= C.lendAbove) return 0;
     if(!repaid.has(l.id)) return 0;
     if(dues.has(l.id)) return 0;
-    if(arrearsOf(l) > 0.5) return 0;
+    if(arrearsOf(l) >EPS) return 0;
     const free = l.pb - dueTotal(l.id) - arrearsOf(l);
     return free<=0 ? 0 : Math.floor(free/step)*step;
   };
@@ -724,7 +918,7 @@ function stepWeek(S){
     if(l.pb <= C.lendAbove) return 'not above the '+rupees0(C.lendAbove)+' lending threshold, so does not lend';
     if(!repaid.has(l.id)) return 'had to borrow this week, so cannot lend';
     if(dues.has(l.id)) return 'still has an unpaid instalment this week, so cannot lend';
-    if(arrearsOf(l) > 0.5) return 'has arrears of their own, so cannot lend';
+    if(arrearsOf(l) >EPS) return 'has arrears of their own, so cannot lend';
     const v = lendable(l);
     return v>0 ? 'above the lending threshold: available to lend up to '+rs2(v) : 'nothing free to lend after instalments and arrears';
   };
@@ -732,8 +926,8 @@ function stepWeek(S){
   /* ---- STAGE 2b: INSTALMENTS BEFORE THE MARKET ---- */
   const closeNotes = (p, L) => {
     const l = idx[L.lId];
-    note(p,'Finished paying off '+loanTag(L)+' ('+rs2(L.principal)+' from '+l.name+'). Loan closed.', {kind:'closed'});
-    note(l, loanTag(L)+' ('+rs2(L.principal)+' lent to '+p.name+') fully repaid. Loan closed.', {kind:'closed'});
+    note(p,'Repaid in full: '+loanTag(L)+' to '+l.name+'.', {kind:'closed'});
+    note(l, p.name+' repaid '+loanTag(L)+' in full.', {kind:'closed'});
   };
 
   const payDues = p => {
@@ -745,17 +939,15 @@ function stepWeek(S){
       if((p.pb-total) >= 0 || cc.shortfall==='pay'){
         const l = idx[L.lId];
         const forced = (p.pb-total) < 0;
-        L.outstanding -= d.pDue;
-        move(p, -total, 'Paid instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' to '+l.name+
-          ': principal '+rs2(d.pDue)+' + interest '+rs2(d.iDue)+'. Principal left on this loan '+rs2(Math.max(0,L.outstanding))+'.'+
-          (forced?' Paid regardless of the shortfall (group rule).':''), 'paid');
-        move(l, total, 'Received instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' from '+p.name+
-          ': principal '+rs2(d.pDue)+' + interest '+rs2(d.iDue)+'.', 'received');
-        l.interestEarned += d.iDue;
-        p.interestPaid += d.iDue; S.cumPaid += d.iDue; S.cumEarned += d.iDue;
-        p.paid++; p.onTimeThisWeek++;
+        L.outstanding = r2(L.outstanding - d.pDue); L.paidP = r2((L.paidP||0) + d.pDue); L.paidN = (L.paidN||0) + 1;
+        move(p, -total, 'Paid instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' to '+l.name+', '+rs2(total)+splitTxt([[d.pDue,'principal'],[d.iDue,'interest']])+'.'+
+          (forced?' Paid despite the shortfall.':''), 'paid');
+        move(l, total, 'Received instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' from '+p.name+', '+rs2(total)+splitTxt([[d.pDue,'principal'],[d.iDue,'interest']])+'.', 'received');
+        l.interestEarned = r2(l.interestEarned + d.iDue);
+        p.interestPaid = r2(p.interestPaid + d.iDue); S.cumPaid += d.iDue; S.cumEarned += d.iDue;
+        p.paid++; p.onTimeThisWeek++; L.paidWk=1;
         L.schedLeft--;
-        if(L.outstanding<=0.5 && L.arrI<=0.5){ L.outstanding=0; L.open=false; closeNotes(p,L); }
+        if(L.outstanding<=EPS && L.arrI<=EPS){ L.outstanding=0; L.open=false; closeNotes(p,L); }
         list.splice(i,1); any=true;
       } else i++;
     }
@@ -763,29 +955,61 @@ function stepWeek(S){
     return any;
   };
 
+  /* PAYING DOWN A DEFAULT, IN STEPS.
+     This week's instalments always come first. Once they are all paid, a
+     regularising participant pays the largest step of each loan's default
+     that the pillow bank can cover: 100%, 75%, 50% or 25% of the default the
+     loan carried at the start of the week (the clearing tiers under Rating
+     movement). Steps count across the week, so someone who paid 25% before
+     the marketplace can top up to 50% or more once more money arrives.
+     Oldest loan first. Payment goes to interest (missed and default) first,
+     then to missed principal. Groups set to "paid regardless" clear 100%. */
+  const paySteps = [...new Set(C.clearTiers.map(t=>t.frac).concat([1]))]
+                     .filter(f=>f>0 && f<=1).sort((a,b)=>b-a);
   const sweep = p => {
     const cc = C.cat[p.cat];
+    if(!cc.regularise) return false;
+    if(dues.has(p.id)) return false;
     let any=false;
-    if(cc.regularise){
-      for(const L of p.loans){
-        if(!L.open) continue;
-        const owed = L.arrP+L.arrI;
-        if(owed<=0.5) continue;
-        if(p.pb-owed >= 0 || cc.shortfall==='pay'){
-          const l = idx[L.lId];
-          const aP=L.arrP, aI=L.arrI, back=L.arrN;
-          L.outstanding -= aP; L.arrP=0; L.arrI=0; L.arrN=0;
-          move(p, -owed, 'Cleared arrears on '+loanTag(L)+' to '+l.name+': '+plural(back,'missed instalment')+
-            ' \u2014 principal '+rs2(aP)+' + interest '+rs2(aI)+'.', 'arrears');
-          move(l, owed, 'Received arrears on '+loanTag(L)+' from '+p.name+': '+plural(back,'missed instalment')+
-            ' \u2014 principal '+rs2(aP)+' + interest '+rs2(aI)+'.', 'received');
-          l.interestEarned += aI;
-          p.interestPaid += aI; S.cumPaid += aI; S.cumEarned += aI;
-          p.recoveredThisWeek += back;
-          if(L.outstanding<=0.5){ L.outstanding=0; L.open=false; closeNotes(p,L); }
-          any=true;
-        }
+    for(const L of p.loans){
+      if(!L.open) continue;
+      const owed = L.arrP+L.arrI;
+      if(owed<=0.005) continue;
+      const base = L.def0>EPS ? L.def0 : owed;
+      const done = L.defPaidWeek||0;
+      let pay=0, step=0, idxStep=-1;
+      if(cc.shortfall==='pay'){ pay=owed; step=1; idxStep=0; }
+      else for(let i=0;i<paySteps.length;i++){
+        const f=paySteps[i];
+        const need=r2(Math.min(owed, ceil2(f*base)-done));
+        if(need<=0.005) break;
+        if(p.pb-need >= -1e-9){ pay=need; step=f; idxStep=i; break; }
       }
+      if(pay<=0.005) continue;
+      const l = idx[L.lId], pbBefore = p.pb;
+      const payI = r2(Math.min(pay, L.arrI)), payP = r2(Math.min(L.arrP, pay-payI));
+      pay = r2(payI + payP);
+      const payPen = r2(Math.min(payI, L.arrPen||0));
+      L.arrPen=r2((L.arrPen||0)-payPen); L.penPaid=r2((L.penPaid||0)+payPen);
+      L.arrI=r2(L.arrI-payI); L.arrP=r2(L.arrP-payP); L.outstanding=r2(L.outstanding-payP); L.paidP=r2((L.paidP||0)+payP);
+      const full = L.arrP+L.arrI <= 0.005, back = L.arrN;
+      const spellCost=L.penSpell||0, spellWks=L.spellWeeks||0, spellFrom=L.spellStart;
+      if(full){ L.arrP=0; L.arrI=0; L.arrPen=0; L.arrN=0; p.recoveredThisWeek += back; L.penSpell=0; L.spellWeeks=0; L.spellStart=undefined; }
+      L.defPaidWeek = r2(done + pay);
+      const pct = Math.round(100*L.defPaidWeek/base);
+      const lead = full ? 'Cleared the default on '
+                 : (done>0.005 ? 'Topped up to '+pct+'% of the default on ' : 'Paid '+pct+'% of the default on ');
+      const payParts = splitTxt([[payPen,'default interest'],[r2(payI-payPen),'missed interest'],[payP,'principal']]);
+      move(p, -pay, lead+loanTag(L)+' to '+l.name+', '+rs2(pay)+payParts+'.'+
+        (full ? ' In default since week '+spellFrom+' ('+plural(spellWks,'week')+'); it cost '+rs2(spellCost)+' in default interest.'
+              : ' Left in default: '+arrSplit(L)+'.'), 'arrears');
+      if(S.keepDetail) Object.assign(p.log[p.log.length-1], {defStep:L.defPaidWeek/base, defFull:full, defBase:base, defPaid:L.defPaidWeek, loanId:L.id});
+      move(l, pay, (full ? 'Default cleared on ' : 'Received '+pct+'% of the default on ')+loanTag(L)+' from '+p.name+', '+rs2(pay)+payParts+'.'+
+        (full?'':' Still owed to you in default: '+arrSplit(L)+'.'), 'received');
+      l.interestEarned = r2(l.interestEarned + payI);
+      p.interestPaid = r2(p.interestPaid + payI); S.cumPaid += payI; S.cumEarned += payI;
+      if(full && L.outstanding<=EPS){ L.outstanding=0; L.open=false; closeNotes(p,L); }
+      any=true;
     }
     return any;
   };
@@ -800,82 +1024,35 @@ function stepWeek(S){
     }
   };
 
+  const missCause = p => p.wasBorrower
+    ? (p.borrowOutcome || 'not enough money even after borrowing')
+    : 'not enough money, and not eligible to borrow';
   const finalise = p => {
     const list = dues.get(p.id);
     if(!list) return;
     for(const d of list){
       const L=d.L, total=d.pDue+d.iDue, l=idx[L.lId];
-      L.arrP += d.pDue; L.arrI += d.iDue; L.arrN++;
-      p.missed++;
-      note(p,'Missed instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' to '+l.name+': '+rs2(total)+
-        ' (principal '+rs2(d.pDue)+' + interest '+rs2(d.iDue)+') not paid \u2014 the pillow bank stood at '+rs2(p.pb)+
-        ' once all of this week\u2019s money had moved. Arrears on this loan now '+rs2(L.arrP+L.arrI)+' ('+plural(L.arrN,'instalment')+').',
-        {kind:'missed', bal:p.pb});
-      note(l,'Not received: instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' from '+p.name+' \u2014 '+rs2(total)+
-        ' goes into arrears. Total arrears owed to you on this loan '+rs2(L.arrP+L.arrI)+'.', {kind:'notreceived', bal:l.pb});
+      if(L.arrP+L.arrI<=EPS){ L.spellStart=w; L.penSpell=0; L.spellWeeks=0; }
+      L.arrP=r2(L.arrP+d.pDue); L.arrI=r2(L.arrI+d.iDue); L.arrN++; L.missN=(L.missN||0)+1;
+      p.missed++; p.missedThisWeek++; L.missWk=1;
+      note(p,'Missed instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' to '+l.name+', '+rs2(total)+splitTxt([[d.pDue,'principal'],[d.iDue,'interest']])+
+        '. Why: '+missCause(p)+'. In default on this loan now: '+arrSplit(L)+'.',
+        {kind:'missed', bal:p.pb, loanId:L.id, missAmt:total, cause:missCause(p)});
+      note(l,'Not received: instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' from '+p.name+', '+rs2(total)+
+        '. Total arrears owed to you on this loan: '+arrSplit(L)+'.', {kind:'notreceived', bal:l.pb});
       L.schedLeft--;
     }
     dues.delete(p.id);
   };
 
-  const prepaid = new Set();
-  const prepay = p => {
-    if(prepaid.has(p.id) || dues.has(p.id)) return;
-    prepaid.add(p.id);
-    const cc = C.cat[p.cat];
-    if(rng()<cc.prepay){
-      const order = p.loans.filter(L=>L.open).sort((a,b)=>
-        ((b.arrP+b.arrI)-(a.arrP+a.arrI)) || (a.outstanding-b.outstanding));
-      for(const L of order){
-        if(p.pb<=0) break;
-        const l = idx[L.lId];
-
-        const owed = L.arrP + L.arrI;
-        if(owed>0.5){
-          const pay  = Math.min(p.pb, owed);
-          const iBit = Math.min(pay, L.arrI);
-          const pBit = pay - iBit;
-          L.arrI -= iBit; L.arrP -= pBit; L.outstanding -= pBit;
-          const back = Math.floor(L.arrN * (pay/owed) + 1e-9);
-          L.arrN -= back;
-          move(p, -pay, 'Prepayment towards arrears on '+loanTag(L)+' to '+l.name+': interest '+rs2(iBit)+' + principal '+rs2(pBit)+
-            ', recovering '+plural(back,'instalment')+'.', 'prepay');
-          move(l, pay, 'Received prepayment of arrears on '+loanTag(L)+' from '+p.name+': interest '+rs2(iBit)+' + principal '+rs2(pBit)+'.', 'received');
-          l.interestEarned += iBit; p.interestPaid += iBit;
-          S.cumPaid += iBit; S.cumEarned += iBit;
-          p.recoveredThisWeek += back;
-        }
-
-        const live = Math.max(0, L.outstanding - L.arrP);
-        if(p.pb>0 && live>0.5 && (L.arrP+L.arrI)<=0.5){
-          const pay = Math.min(p.pb, live);
-          L.outstanding -= pay;
-          move(p, -pay, (pay>=live-0.5 ? 'Settled '+loanTag(L)+' early' : 'Prepaid principal on '+loanTag(L))+
-            ' to '+l.name+': '+rs2(pay)+'. Principal left '+rs2(Math.max(0,L.outstanding))+'.', 'prepay');
-          move(l, pay, 'Received early principal on '+loanTag(L)+' from '+p.name+': '+rs2(pay)+'.', 'received');
-          reschedule(L, C);
-        }
-
-        if(L.outstanding<=0.5 && L.arrI<=0.5){ L.outstanding=0; L.open=false; L.arrN=0; closeNotes(p,L); }
-      }
-    }
-  };
-
-  for(const p of people){ p.onTimeThisWeek = 0; p.recoveredThisWeek = 0; }
+  for(const p of people){ p.onTimeThisWeek = 0; p.recoveredThisWeek = 0; p.wasBorrower = false; p.borrowOutcome = ''; }
   for(const p of people) p.owedAtStart = owedNow(p);
   const repaid = new Set(people.filter(x=>x.pb > C.borrowBelow).map(x=>x.id));
-  if(S.keepDetail) for(const p of people){
-    note(p, 'After the surplus draw the pillow bank is '+rs2(p.pb)+' \u2014 '+(repaid.has(p.id)
-      ? 'above the '+rupees0(C.borrowBelow)+' borrow threshold, so pays instalments first, before the marketplace.'
-      : 'at or below the '+rupees0(C.borrowBelow)+' borrow threshold, so borrows first and pays instalments afterwards.'), {kind:'market', bal:p.pb});
-  }
   const payFirst = shuffle(people.filter(x=>repaid.has(x.id)), rng);
   settle(payFirst);
-  for(const p of payFirst) prepay(p);
   for(const p of people){
     p.prePb = p.pb;
-    if(S.keepDetail) note(p,'Going into the marketplace: pillow bank '+rs2(p.pb)+' \u2014 '+
-      (p.pb<=C.borrowBelow ? 'at or below '+rupees0(C.borrowBelow)+', so must borrow.' : lendReason(p)+'.'), {kind:'market', bal:p.pb});
+    if(S.keepDetail && lendable(p)>0) note(p,'Available to lend: '+rs2(lendable(p))+'.', {kind:'market', bal:p.pb});
   }
 
   /* ---- STAGE 3: THE MARKETPLACE ---- */
@@ -884,20 +1061,32 @@ function stepWeek(S){
   for(const b of borrowers){
     const needNow = dueTotal(b.id);
     const need = Math.max(0, needNow - b.pb);
-    const needTxt = rupees0(need) + (needNow > 0.5
+    const needTxt = rupees0(need) + (needNow >EPS
       ? ' ('+rupees0(-b.pb)+' to get back to zero plus '+rupees0(needNow)+' of instalments due this week)'
       : ' to get back to zero');
     const openLoans = b.loans.filter(L=>L.open);
-    if(b.cr < C.crNoLoan){ blocked++; b.refused++; note(b,'Needed '+needTxt+' but the rating of '+b.cr.toFixed(0)+' is below '+C.crNoLoan+', so no borrowing allowed.',{kind:'refused'}); continue; }
-    if(openLoans.length >= maxLoansFor(b.cr,C)){ blocked++; b.refused++; note(b,'Needed '+needTxt+' but already holds '+openLoans.length+' loans, the limit at a rating of '+b.cr.toFixed(0)+'.',{kind:'refused'}); continue; }
+    b.wasBorrower = true;
+    if(b.cr < C.crNoLoan){ blocked++; b.refused++; b.borrowOutcome='rating too low to borrow'; note(b,'Could not borrow '+rupees0(need)+': rating too low.',{kind:'refused', request:true}); continue; }
+    if(openLoans.length >= maxLoansFor(b.cr,C)){ blocked++; b.refused++; b.borrowOutcome='already holds as many loans as allowed'; note(b,'Could not borrow '+rupees0(need)+': already holds '+plural(openLoans.length,'loan')+', the most allowed.',{kind:'refused', request:true}); continue; }
     const room = C.maxPrincipal - openLoans.reduce((s,L)=>s+L.outstanding,0);
-    if(room < C.amounts[0]){ blocked++; b.refused++; note(b,'Needed '+needTxt+' but is already at the '+rupees0(C.maxPrincipal)+' borrowing ceiling.',{kind:'refused'}); continue; }
-    const covering = C.amounts.filter(a=>a<=room && (b.pb+a) >= needNow);
-    const helping  = C.amounts.filter(a=>a<=room && (b.pb+a) <  needNow).sort((x,y)=>y-x);
-    if(!covering.length && !helping.length){ blocked++; b.refused++; note(b,'Needed '+needTxt+' but no loan size fits under the remaining borrowing room of '+rupees0(room)+'.',{kind:'refused'}); continue; }
-    const ladder = shuffle(covering.slice(), rng).concat(helping);
+    if(room < C.amounts[0]){ blocked++; b.refused++; b.borrowOutcome='at the borrowing limit'; note(b,'Could not borrow '+rupees0(need)+': already at the '+rupees0(C.maxPrincipal)+' borrowing limit.',{kind:'refused', request:true}); continue; }
+    /* the smallest size that covers this week's instalments lands the borrower
+       back between the two thresholds; a bigger one would only be borrowed to
+       sit idle at interest. If nobody can fund it, fall back to the largest
+       smaller size someone can fund (a larger covering size cannot help: any
+       lender able to fund it could fund the smaller one too). */
+    const covering = C.amounts.filter(a=>a<=room && (b.pb+a) >= needNow - EPS);
+    const helping  = C.amounts.filter(a=>a<=room && (b.pb+a) <  needNow - EPS).sort((x,y)=>y-x);
+    if(!covering.length && !helping.length){ blocked++; b.refused++; b.borrowOutcome='no loan size fits under the borrowing limit'; note(b,'Could not borrow '+rupees0(need)+': no loan size fits under the borrowing limit.',{kind:'refused', request:true}); continue; }
+    const ladder = covering.slice(0,1).concat(helping);
+    const coverSize = covering.length ? covering[0] : null;
     const tenure = nearestTenure(b.prefTenure, C.tenures);
     const rate   = irFor(b.cr, C);
+
+    /* who could fund this borrower at all, and who walks away on risk grounds */
+    const withFunds = people.filter(l => l.id!==b.id && lendable(l)>0);
+    const shy = withFunds.filter(l => !(l.riskTaker || b.cr>=C.riskyBelow));
+    if(S.keepDetail) shy.forEach(l=>l.riskRefused.push(b.name+' (rated '+n1(b.cr)+')'));
 
     let placed=false;
     for(const amt of ladder){
@@ -911,56 +1100,106 @@ function stepWeek(S){
         : (r>0 ? amt*r/(1-Math.pow(1+r,-tenure)) : amt/tenure);
       const L = { id:++S.loanSeq, bId:b.id, lId:l.id, principal:amt, outstanding:amt,
                   tenure, rate, r, emi, sched:buildSchedule(amt, r, tenure, emi, C.irMode),
-                  schedLeft:tenure, arrP:0, arrI:0, arrN:0, open:true, week:w };
+                  schedLeft:tenure, arrP:0, arrI:0, arrN:0, open:true, week:w,
+                  paidP:0, paidN:0, missN:0,
+                  crAtOrigin:b.cr, capAtOrigin:maxLoansFor(b.cr,C), heldAtOrigin:openLoans.length,
+                  exposureAtOrigin:openLoans.reduce((s,x)=>s+x.outstanding,0),
+                  needAtOrigin:need, duesAtOrigin:needNow, pbAtOrigin:b.pb, coverSize, sizeRule: amt===coverSize ? 'cover' : 'fallback' };
       allLoans.push(L); b.loans.push(L); l.given.push(L);
-      move(b, amt, 'Borrowed '+rs2(amt)+' as '+loanTag(L)+' from '+l.name+' over '+tenure+' weeks at '+rate.toFixed(1)+
-        '% (needed '+needTxt+'). Weekly payment '+rs2(emi)+'; first instalment falls due next week.', 'loan');
-      move(l, -amt, 'Lent '+rs2(amt)+' as '+loanTag(L)+' to '+b.name+' over '+tenure+' weeks at '+rate.toFixed(1)+
-        '%, receiving '+rs2(emi)+' a week from next week.', 'loan');
+      const afterDues = r2(b.pb + amt - needNow);
+      const totI = r2(L.sched.reduce((a,x)=>a+x.i,0)), lastPay = r2(L.sched[L.sched.length-1].p+L.sched[L.sched.length-1].i);
+      const plan = plural(tenure,'weekly payment')+' of '+rs2(r2(emi))+(Math.abs(lastPay-r2(emi))>EPS?' (last '+rs2(lastPay)+')':'')+', '+rs2(totI)+' interest in all';
+      move(b, amt, 'Borrowed '+rs2(amt)+' from '+l.name+' for '+tenure+' weeks at '+rate.toFixed(1)+'%: '+plan+'.'+
+        (amt!==coverSize?' No lender could fund more, so it is '+rs2(need-amt)+' short of what was needed.':''), 'loan');
+      move(l, -amt, 'Lent '+rs2(amt)+' to '+b.name+' for '+tenure+' weeks at '+rate.toFixed(1)+'%: '+plan+'.', 'loan');
       b.loansTaken++; l.loansGiven++; b.borrowed+=amt; l.lent+=amt;
       made++; madeValue+=amt;
-      placed=true; break;
+      placed=true; if(amt!==coverSize) b.borrowOutcome='could only borrow '+rupees0(amt)+', not enough'; break;
     }
-    if(!placed){ unfunded++; unfundedValue+=need; b.refused++; note(b,'Needed '+needTxt+' but no lender could fund any loan size, down to '+rupees0(C.amounts[0])+'.',{kind:'refused'}); }
+    if(!placed){
+      unfunded++; unfundedValue+=need; b.refused++; b.borrowOutcome='no lender had the money';
+      note(b,'Could not borrow '+rupees0(need)+': no lender had the money.', {kind:'refused', request:true});
+    }
+  }
+  if(S.keepDetail) for(const p of people){
+    if(p.riskRefused.length) note(p,'Would not lend to '+p.riskRefused.map(x=>x.replace(/ \(rated [^)]*\)/,'')).join(', ')+': rating too low for a cautious lender.', {kind:'refused'});
+    const free = lendable(p);
+    if(free>0) note(p,'Left unlent: '+rs2(free)+'.', {kind:'market', bal:p.pb});
   }
 
   /* ---- STAGE 4: REPAYMENT FOR BORROWERS ---- */
   settle(shuffle(people.slice(), rng));
+  if(S.keepDetail) for(const p of people){
+    const reg = C.cat[p.cat].regularise;
+    for(const L of p.loans){
+      if(!L.open || L.arrP+L.arrI<=0.005 || (L.defPaidWeek||0)>0.005) continue;
+      const owed=L.arrP+L.arrI, base=L.def0>EPS?L.def0:owed, low=paySteps[paySteps.length-1];
+      note(p, 'Nothing paid toward the default on '+loanTag(L)+' ('+rs2(owed)+'): '+
+        (!reg ? 'this group never pays off defaults.'
+         : dues.has(p.id) ? 'this week\u2019s instalments were not covered.'
+         : 'not enough for '+Math.round(low*100)+'% ('+rs2(Math.min(owed,ceil2(low*base)))+').'),
+        {kind:'defnote', bal:p.pb});
+    }
+  }
   for(const p of people) finalise(p);
-  for(const p of shuffle(people.slice(), rng)) prepay(p);
 
-  /* ---- STAGE 5: STATUS AND THE WEEKLY RATING CHARGE ---- */
+  /* ---- STAGE 5: STATUS, RATING MOVE, DEFAULT-INTEREST RESET ----
+     Every loan is scored on its own, by the state THAT LOAN opened the week
+     in and what happened to it. The points are summed or averaged over the
+     loans scored, giving one rating move per person per week. */
   for(const p of people){
-    const wasBehind = p.inDefault;
-    p.inDefault = arrearsOf(p) > 0.5;
-    if(p.inDefault){
-      p.weeksBehind++;
-      const n = missesOf(p);
-      crMove(p,'down',C,n);
-      if(!wasBehind) note(p,'Now behind on payments.',{kind:'status'});
-      if(C.crScope==='loan'){
-        const good = p.onTimeThisWeek + p.recoveredThisWeek;
-        crMove(p,'up',C,good);
-        if(good) note(p,'Paid '+p.onTimeThisWeek+' on time and recovered '+p.recoveredThisWeek+
-          ' in arrears \u2014 credited, each loan judged on its own.',{kind:'status'});
+    const wasDef = p.inDefault;
+    const nowDef = arrearsOf(p) >EPS;
+    const parts=[], pts=[], tiers=[];
+    for(const L of p.loans){
+      const inDef=L.def0>EPS, paid=!!L.paidWk, miss=!!L.missWk;
+      if(!paid && !miss && !inDef) continue;
+      let x=0, txt='';
+      if(!inDef){ if(miss){ x=-C.crMissClean; txt='missed'; } else { x=C.crPaidClean; txt='paid'; } }
+      else if(miss){ x=-C.crMissDef; txt='missed, while in default'; }
+      else {
+        const f=Math.min(L.defPaidWeek||0, L.def0)/L.def0;
+        const t=C.clearTiers.find(y=>f >= y.frac - 1e-6);
+        if(t){ x=t.pts; txt=(paid?'paid + ':'')+Math.round(t.frac*100)+'% of the default cleared'; tiers.push(Math.round(t.frac*100)); }
+        else if(paid){ x=C.crPaidDef; txt='paid, while in default'; }
+        else if(C.crIdleDef){ x=-C.crIdleDef; txt='in default, nothing paid'; }
+        else continue;
       }
-      note(p,plural(n,'instalment')+' still owing \u2014 rating charged again this week.',{kind:'status'});
+      pts.push(x);
+      parts.push((x>=0?'+':'\u2212')+Math.abs(x)+' '+txt+' on '+loanTag(L));
     }
-    else {
-      const good = p.onTimeThisWeek + p.recoveredThisWeek;
-      crMove(p,'up',C,good);
-      if(p.recoveredThisWeek) note(p,'All arrears cleared'+(p.onTimeThisWeek?' and this week\u2019s instalments paid':'')+
-        ' \u2014 nothing owing, rating rises.',{kind:'status'});
-      else if(p.onTimeThisWeek) note(p,'Paid '+plural(p.onTimeThisWeek,'instalment')+' on time with nothing owing \u2014 rating rises.',{kind:'status'});
-      if(p.biasOn) note(p,'Back to a clean record; the extra earning effort stops.',{kind:'status'});
-      p.biasOn=false;
+    const sgn = x => (x>=0?'+':'\u2212')+Math.abs(Math.round(x*1000)/1000);
+    const total = pts.reduce((a,x)=>a+x,0);
+    let d = pts.length ? (C.crBasis==='avg' ? total/pts.length : total) : 0;
+    d = Math.round(d*1000)/1000;
+    const crBefore = p.cr;
+    if(d) crAdd(p,d,C);
+    const clipped = d && Math.abs((crBefore+d)-p.cr) > 1e-9;
+    const why = pts.length ? parts.join('; ')+(pts.length>1 && C.crBasis==='avg' ? ' (averaged over '+pts.length+' loans)' : '')
+              : (wasDef ? 'in default, nothing due and nothing paid' : 'nothing due');
+    note(p, 'Rating '+(d ? n1(crBefore)+' \u2192 '+n1(p.cr)+' ('+sgn(d)+(clipped?', held at the '+(d>0?'ceiling':'floor'):'')+')' : 'unchanged at '+n1(p.cr))+': '+why+'.',
+      {kind:'rating', rd:true, pts:pts.slice(), d, crFrom:crBefore, crTo:p.cr, tiers});
+
+    /* default-interest clock: reset any loan where enough of its default was cleared this week */
+    for(const L of p.loans){
+      if(!L.open || !(L.def0>EPS)) continue;
+      if(L.arrP+L.arrI<=EPS){ L.defAge=0; continue; }
+      if((L.defPaidWeek||0) >= C.defReset/100*L.def0 - 1e-6){
+        const wasRate=defRateFor(L.defAge,C);
+        L.defAge=0;
+        note(p,'Default interest rate on '+loanTag(L)+' back to '+C.defRate.toFixed(2)+'% after paying '+Math.round(100*L.defPaidWeek/L.def0)+'% of the default this week.',{kind:'penalty', reset:true, loanId:L.id});
+      }
     }
+
+    p.inDefault = nowDef;
+    if(nowDef){ p.weeksBehind++; if(!wasDef) note(p,'Now in default.',{kind:'status'}); }
+    else if(wasDef) note(p,'Out of default.',{kind:'status'});
   }
 
   /* ---- STAGE 6: RECORD THE WEEK ---- */
   const rec={week:w, made, madeValue, blocked, unfunded, unfundedValue,
              cumPaid:S.cumPaid, cumEarned:S.cumEarned, outstanding:0, behind:0,
-             arrearsP:0, arrearsPStuck:0, by:{}};
+             arrearsP:0, arrearsPStuck:0, defaultOwed:0, penaltyCum:S.penaltyCum, penaltyWeek:penWeekTotal, netTotal:0, by:{}};
   for(const p of people) p.lentArrearsP = 0;
   for(const L of allLoans) if(L.open){
     rec.outstanding+=L.outstanding;
@@ -971,34 +1210,41 @@ function stepWeek(S){
     }
   }
   for(const p of people){
-    const b = rec.by[p.code] || (rec.by[p.code]={pb:0,cr:0,def:0,lock:0,ip:0,ie:0,la:0,n:0});
-    b.pb+=p.pb; b.cr+=p.cr; b.ip+=p.interestPaid; b.ie+=p.interestEarned; b.la+=p.lentArrearsP; b.n++;
+    const ns = netSheet(p);
+    p.nb=ns.net; p.nbRecv=ns.recv; p.nbOwe=ns.owe; p.defOwed=ns.defOwed;
+    rec.defaultOwed += ns.defOwed; rec.netTotal += ns.net;
+    const b = rec.by[p.code] || (rec.by[p.code]=newBy());
+    b.pb+=p.pb; b.cr+=p.cr; b.ip+=p.interestPaid; b.ie+=p.interestEarned; b.la+=p.lentArrearsP; b.nb+=ns.net; b.dout+=ns.defOwed; b.n++;
     if(p.inDefault){ b.def++; rec.behind++; }
     if(p.cr < C.crNoLoan) b.lock++;
   }
   S.weekly.push(rec);
   if(S.keepDetail) for(const p of people){
-    /* NEW: the loan book at close of week, one row per open loan */
+    /* the loan book at close of week, one row per open loan */
     for(const L of p.loans) if(L.open){
-      note(p,'Loan book \u2014 you owe on '+loanTag(L)+' to '+idx[L.lId].name+' ('+rs2(L.principal)+', '+L.tenure+' weeks at '+L.rate.toFixed(1)+
-        '%): principal outstanding '+rs2(L.outstanding)+'; arrears '+(L.arrN||L.arrP+L.arrI>0.005 ? rs2(L.arrP+L.arrI)+' across '+plural(L.arrN,'missed instalment') : 'none')+
-        '; '+plural(Math.max(0,L.schedLeft),'scheduled instalment')+' left.', {kind:'book'});
+      const d=r2(L.arrP+L.arrI), keep=r2(Math.max(0,L.outstanding-L.arrP));
+      note(p,'You owe '+idx[L.lId].name+' on '+loanTag(L)+': '+bookTxt(L,keep,d)+'.',
+        {kind:'book', side:'borrower', loanId:L.id, arr:d, full:r2(keep+remIntSched(L)+d)});
     }
     for(const L of p.given) if(L.open){
-      note(p,'Loan book \u2014 owed to you on '+loanTag(L)+' by '+idx[L.bId].name+' ('+rs2(L.principal)+', '+L.tenure+' weeks at '+L.rate.toFixed(1)+
-        '%): principal outstanding '+rs2(L.outstanding)+'; arrears '+(L.arrN||L.arrP+L.arrI>0.005 ? rs2(L.arrP+L.arrI)+' across '+plural(L.arrN,'missed instalment') : 'none')+
-        '; '+plural(Math.max(0,L.schedLeft),'scheduled instalment')+' left.', {kind:'book'});
+      const d=r2(L.arrP+L.arrI), keep=r2(Math.max(0,L.outstanding-L.arrP));
+      note(p,idx[L.bId].name+' owes you on '+loanTag(L)+': '+bookTxt(L,keep,d)+'.',
+        {kind:'book', side:'lender', loanId:L.id, full:r2(keep+remIntSched(L)+d)});
     }
-    /* NEW: reconciliation */
+    note(p,'Net position '+rs2(p.nb)+' = balance '+rs2(p.pb)+' + to receive '+rs2(p.nbRecv)+' (not counting default) \u2212 to pay '+rs2(p.nbOwe)+'.', {kind:'net'});
+    note(p,'To date: '+p.paid+' instalments paid, '+p.missed+' missed; interest paid '+rs2(p.interestPaid)+', earned '+rs2(p.interestEarned)+
+      ((p.penCharged+p.penAccrued)>EPS ? '; default interest '+rs2(p.penCharged)+' on your defaults ('+rs2(p.penWeekCharged)+' this week), '+
+        rs2(p.penAccrued)+' from your borrowers ('+rs2(p.penWeekAccrued)+' this week)' : '')+'.', {kind:'summary'});
+    /* reconciliation */
     const calc = p.weekOpen + p.flow, ok = Math.abs(calc - p.pb) < 0.005;
-    note(p,'End of week '+w+': pillow bank '+rs2(p.pb)+'. Check: opening '+rs2(p.weekOpen)+' '+(p.flow<0?'\u2212 ':'+ ')+rs2(Math.abs(p.flow))+
-      ' net movements = '+rs2(calc)+(ok?' \u2713 balances.':' \u2717 DOES NOT BALANCE.'), {kind:'end', bal:p.pb, ok});
+    note(p,'Closing balance '+rs2(p.pb)+' (opening '+rs2(p.weekOpen)+' '+(p.flow<0?'\u2212':'+')+' '+rs2(Math.abs(p.flow))+(ok?' \u2713':' \u2717 DOES NOT BALANCE')+').', {kind:'end', bal:p.pb, ok});
 
     p.pbSeries.push(p.pb); p.crSeries.push(p.cr);
     p.ipSeries.push(p.interestPaid); p.ieSeries.push(p.interestEarned);
     p.defSeries.push(p.inDefault?1:0); p.lockSeries.push(p.cr<C.crNoLoan?1:0);
     p.surplusSeries.push(p.weekSurplus); p.prePbSeries.push(p.prePb); p.openSeries.push(p.weekOpen);
     p.laSeries.push(p.lentArrearsP);
+    p.nbSeries.push(p.nb); p.doutSeries.push(p.defOwed); p.biasSeries.push(p.biasAmt);
   }
 }
 
@@ -1015,21 +1261,339 @@ function snapshot(sess){
   const runs=sess.runs, n=runs.length, len=runs[0].weekly.length;
   const weekly=[];
   for(let i=0;i<len;i++){
-    const a={week:i+1, made:0,madeValue:0,blocked:0,unfunded:0,unfundedValue:0,
-             cumPaid:0,cumEarned:0,outstanding:0,behind:0,arrearsP:0,arrearsPStuck:0, by:{}};
+    const a={week:i+1, by:{}}; ACC.forEach(k=>a[k]=0);
     for(const S of runs){
       const r=S.weekly[i];
       ACC.forEach(k=>a[k]+=r[k]);
       for(const c in r.by){
-        const t=a.by[c]||(a.by[c]={pb:0,cr:0,def:0,lock:0,ip:0,ie:0,la:0,n:0}), b=r.by[c];
-        t.pb+=b.pb; t.cr+=b.cr; t.def+=b.def; t.lock+=b.lock; t.ip+=b.ip; t.ie+=b.ie; t.la+=b.la; t.n+=b.n;
+        const t=a.by[c]||(a.by[c]=newBy()), b=r.by[c];
+        BYF.forEach(f=>t[f]+=b[f]);
       }
     }
     ACC.forEach(k=>a[k]/=n);
-    for(const c in a.by){ const t=a.by[c]; t.pb/=n; t.cr/=n; t.def/=n; t.lock/=n; t.ip/=n; t.ie/=n; t.la/=n; t.n/=n; }
+    for(const c in a.by){ const t=a.by[c]; BYF.forEach(f=>t[f]/=n); }
     weekly.push(a);
   }
   return {detail:runs[0], weekly, cats:runs[0].cats, runs:n, week:runs[0].week};
+}
+
+/* ==================================================================
+   INTEGRITY CHECKS
+   Re-derives every invariant from the finished run, and from the event
+   log itself, so the log is checked as well as the model. Returns a
+   list of {name, ok, detail}. Pure: changes nothing.
+   ================================================================== */
+function runChecks(S){
+  const C=S.C, out=[], E=0.01;
+  const add=(name,ok,detail)=>out.push({name, ok:!!ok, detail:detail||''});
+  const people=S.people, loans=S.allLoans, W=S.week;
+  const sum=(a,f)=>a.reduce((s,x)=>s+f(x),0);
+
+  /* ---- 1. money ---- */
+  const pbSum=sum(people,p=>p.pb);
+  add('Money is conserved: every pillow bank together equals every surplus ever drawn',
+      Math.abs(pbSum-S.surplusTotal)<E,
+      'pillow banks '+rs2(pbSum)+' vs surpluses drawn '+rs2(S.surplusTotal));
+
+  const surpSeries=sum(people,p=>p.surplusSeries.reduce((s,x)=>s+x,0));
+  add('The recorded weekly surpluses add up to the same total',
+      Math.abs(surpSeries-S.surplusTotal)<E, rs2(surpSeries)+' vs '+rs2(S.surplusTotal));
+
+  /* ---- 2. the log reconciles, week by week, person by person ---- */
+  let recBad=0, recSeen=0, rowBad=0, rowSeen=0, startRows=0, endRows=0, flagged=0;
+  for(const p of people){
+    let open=null, flow=0, weeksSeen=0;
+    for(const e of p.log){
+      if(e.kind==='start'){ open=e.bal; flow=0; startRows++; weeksSeen++; }
+      if(e.amt!==undefined){
+        rowSeen++;
+        if(Math.abs(e.before+e.amt-e.bal)>0.005) rowBad++;
+        flow+=e.amt;
+      }
+      if(e.kind==='end'){
+        endRows++; recSeen++;
+        if(e.ok===false) flagged++;
+        if(open===null || Math.abs(open+flow-e.bal)>0.005) recBad++;
+      }
+    }
+  }
+  add('Every money row in the log states a balance that follows from the one before',
+      rowBad===0, rowSeen.toLocaleString('en-IN')+' money rows checked, '+rowBad+' wrong');
+  add('Every person-week in the log reconciles: opening balance + movements = closing balance',
+      recBad===0 && flagged===0, recSeen.toLocaleString('en-IN')+' person-weeks, '+recBad+' out by more than a paisa');
+  add('The log opens and closes every week for every participant',
+      startRows===people.length*W && endRows===people.length*W,
+      startRows+' opening and '+endRows+' closing rows for '+people.length+' people over '+W+' weeks');
+  add('Closing balances in the log match the series the charts are drawn from',
+      people.every(p=>{
+        const ends=p.log.filter(e=>e.kind==='end');
+        return ends.length===p.pbSeries.length && ends.every((e,i)=>Math.abs(e.bal-p.pbSeries[i])<0.005);
+      }), 'compared week by week for all '+people.length+' participants');
+
+  /* ---- 3. the log accounts for every event the counters saw ---- */
+  const cnt=(p,k)=>p.log.filter(e=>e.kind===k).length;
+  add('Every instalment paid appears in the log',
+      people.every(p=>cnt(p,'paid')===p.paid),
+      sum(people,p=>p.paid).toLocaleString('en-IN')+' instalments paid');
+  add('Every instalment missed appears in the log',
+      people.every(p=>cnt(p,'missed')===p.missed),
+      sum(people,p=>p.missed).toLocaleString('en-IN')+' instalments missed');
+  add('Every loan taken and every loan given appears in the log',
+      people.every(p=>cnt(p,'loan')===p.loansTaken+p.loansGiven),
+      loans.length.toLocaleString('en-IN')+' loans, logged on both sides');
+  add('Every refused borrowing request appears in the log',
+      people.every(p=>p.log.filter(e=>e.kind==='refused'&&e.request).length===p.refused),
+      sum(people,p=>p.refused).toLocaleString('en-IN')+' requests refused');
+  add('Every week carries exactly one rating decision, with its reason, for every participant',
+      people.every(p=>p.crSeries.length===W && p.log.filter(e=>e.rd).length===W),
+      'one rating decision a week, loan by loan');
+
+  /* ---- 4. loan arithmetic ---- */
+  let bad=[];
+  for(const L of loans){
+    const paidP=L.paidP||0;
+    if(Math.abs(L.principal-(paidP+L.outstanding))>E) bad.push('principal '+L.id);
+    if(L.outstanding<-E) bad.push('negative balance '+L.id);
+    if(L.arrP>L.outstanding+E) bad.push('arrears above balance '+L.id);
+    if(L.schedLeft<0) bad.push('over-scheduled '+L.id);
+    if((L.paidN||0)+(L.missN||0)!==L.tenure-L.schedLeft) bad.push('instalment count '+L.id);
+    if(!L.open && (L.outstanding>EPS || L.arrP+L.arrI>EPS)) bad.push('closed but owing '+L.id);
+    const schedP=L.sched.reduce((s,x)=>s+x.p,0);
+    if(Math.abs(schedP-L.principal)>E) bad.push('schedule '+L.id);
+  }
+  add('Every loan balances: principal = principal repaid + principal outstanding',
+      bad.length===0, loans.length.toLocaleString('en-IN')+' loans checked'+(bad.length?': '+bad.slice(0,5).join(', '):''));
+  add('Every repayment schedule repays exactly the principal advanced, no more and no less',
+      !bad.some(x=>x.indexOf('schedule')===0), 'checked against each loan\u2019s own rate and tenure');
+
+  /* ---- 4b. paying down a default, in steps ---- */
+  {
+    const steps=[...new Set(C.clearTiers.map(t=>t.frac).concat([1]))].filter(f=>f>0&&f<=1);
+    let offStep=0, beforeDues=0, neg=0, rows=0;
+    const hit={};
+    for(const p of people){
+      const missedWk=new Set(p.log.filter(e=>e.kind==='missed').map(e=>e.w));
+      for(const e of p.log){
+        if(e.kind!=='arrears' || e.amt===undefined) continue;
+        rows++;
+        if(!e.defFull && !steps.some(f=>Math.abs(ceil2(f*e.defBase)-e.defPaid)<EPS)) offStep++;
+        const k=e.defFull?'full':Math.round(e.defStep*100)+'%'; hit[k]=(hit[k]||0)+1;
+        if(missedWk.has(e.w)) beforeDues++;
+      }
+    }
+    for(const L of loans) if(L.arrP<-0.005 || L.arrI<-0.005) neg++;
+    add('Every payment toward a default lands exactly on a step ('+steps.map(f=>Math.round(f*100)+'%').sort((a,b)=>parseInt(a)-parseInt(b)).join(', ')+') or clears it',
+        offStep===0, rows.toLocaleString('en-IN')+' payments \u2014 '+Object.keys(hit).sort().map(k=>k+' '+hit[k]).join(', ')+(offStep?'; '+offStep+' off-step':''));
+    add('Nobody pays toward a default in a week they left an instalment unpaid', beforeDues===0, beforeDues+' breaches');
+    add('No loan is ever paid down past zero arrears', neg===0, neg+' loans with negative arrears');
+  }
+
+  /* ---- 4c. money is exact to the paisa ---- */
+  {
+    const whole = x => x===undefined || Math.abs(x*100-Math.round(x*100))<1e-6;
+    let off=0, n=0;
+    for(const p of people) for(const e of p.log){ if(e.amt!==undefined){ n++; if(!whole(e.amt)||!whole(e.before)||!whole(e.bal)) off++; } }
+    for(const L of loans) for(const x of L.sched) if(!whole(x.p)||!whole(x.i)) off++;
+    add('Every amount in the log and every scheduled instalment is in whole paise, so it can be added up by hand',
+        off===0, n.toLocaleString('en-IN')+' money rows, '+off+' not in whole paise');
+  }
+  /* ---- 4d. loan size follows the rule ---- */
+  {
+    let bad=0, over=0;
+    for(const L of loans){
+      const smaller=C.amounts.filter(a=>a<L.principal);
+      if(L.sizeRule==='cover'){
+        if(L.pbAtOrigin+L.principal < L.duesAtOrigin-EPS) bad++;
+        if(smaller.some(a=>L.pbAtOrigin+a >= L.duesAtOrigin-EPS)) bad++;
+      } else {
+        if(L.pbAtOrigin+L.principal >= L.duesAtOrigin-EPS) bad++;
+        if(L.coverSize!==null && L.principal>=L.coverSize) bad++;
+      }
+      if(L.pbAtOrigin+L.principal-L.duesAtOrigin > C.lendAbove+EPS && smaller.length && L.sizeRule==='cover'
+         && smaller.some(a=>L.pbAtOrigin+a >= L.duesAtOrigin-EPS)) over++;
+    }
+    const nCover=loans.filter(L=>L.sizeRule==='cover').length;
+    add('Every loan is the smallest size that covers the need, or \u2014 when nobody could fund that \u2014 a smaller size that does not',
+        bad===0, nCover+' covering, '+(loans.length-nCover)+' fallback, '+bad+' wrong');
+    add('Nobody borrows more than they need and ends up with idle money at interest', over===0, over+' oversized loans');
+  }
+  /* ---- 4e. every missed instalment says why ---- */
+  {
+    let miss=0, noCause=0;
+    for(const p of people) for(const e of p.log) if(e.kind==='missed'){ miss++; if(!e.cause) noCause++; }
+    add('Every missed instalment states its cause', noCause===0, miss.toLocaleString('en-IN')+' misses, '+noCause+' without a cause');
+  }
+
+  {
+    const a=people.reduce((s,p)=>s+p.penCharged,0), b=people.reduce((s,p)=>s+p.penAccrued,0), c=loans.reduce((s,L)=>s+(L.penTotal||0),0);
+    add('Default interest charged to borrowers equals default interest owed to lenders, loan by loan', Math.abs(a-b)<E && Math.abs(a-c)<E,
+        rs2(a)+' charged, '+rs2(b)+' owed to lenders');
+  }
+
+  {
+    let n=0, bad=0;
+    for(const p of people) for(const e of p.log) if(e.kind==='penalty' && e.side==='borrower'){ n++; if(e.spellStart===undefined || e.w-e.spellStart!==e.spellWeeks) bad++; }
+    add('Every default\u2019s \u201Cin default since week X (N weeks)\u201D agrees with itself', bad===0, n.toLocaleString('en-IN')+' default-interest rows, '+bad+' inconsistent');
+  }
+
+  {
+    let bad=0, wkBad=0;
+    for(const L of loans){
+      const unpaid=L.arrPen||0;
+      if(unpaid<-EPS || unpaid>L.arrI+EPS) bad++;
+      if(Math.abs((L.penTotal||0)-((L.penPaid||0)+unpaid))>EPS) bad++;
+    }
+    S.weekly.forEach((rec,i)=>{
+      let bs=0, ls=0;
+      for(const p of people) for(const e of p.log) if(e.w===i+1 && e.kind==='penalty' && e.pen!==undefined){ if(e.side==='borrower') bs+=e.pen; else ls+=e.pen; }
+      if(Math.abs(bs-rec.penaltyWeek)>EPS || Math.abs(ls-rec.penaltyWeek)>EPS) wkBad++;
+    });
+    add('On every loan, default interest charged = default interest paid + default interest still unpaid', bad===0, bad+' loans out');
+    add('Each week\u2019s default interest in the log matches the weekly total, on the borrower side and the lender side', wkBad===0, S.weekly.length+' weeks, '+wkBad+' out');
+  }
+
+  /* ---- 4f. replay every default, week by week, from the log alone ---- */
+  {
+    let loanWeeks=0; const bad=[];
+    const flag=(L,w,why)=>{ if(bad.length<8) bad.push('loan '+L.id+' wk '+w+': '+why); else bad.push(''); };
+    for(const L of loans){
+      const b=S.idx[L.bId], l=S.idx[L.lId];
+      const mine=b.log.filter(e=>e.loanId===L.id), theirs=l.log.filter(e=>e.loanId===L.id && e.kind==='penalty' && e.side==='lender');
+      if(!mine.length) continue;
+      const first=Math.min(...mine.map(e=>e.w));
+      let prevEnd=null, prevAge=0, prevReset=true;
+      for(let w=first; w<=S.week; w++){
+        const rw=mine.filter(e=>e.w===w);
+        const pen=rw.find(e=>e.kind==='penalty' && e.side==='borrower');
+        const pays=rw.filter(e=>e.kind==='arrears' && e.amt!==undefined).reduce((a,e)=>a-e.amt,0);
+        const miss=rw.filter(e=>e.kind==='missed').reduce((a,e)=>a+e.missAmt,0);
+        const book=rw.find(e=>e.kind==='book');
+        const reset=rw.some(e=>e.kind==='penalty' && e.reset);
+        const start = prevEnd===null ? (pen ? pen.owed : 0) : prevEnd;
+        const end = book ? book.arr : 0;
+        loanWeeks++;
+        if(start>EPS && !pen) flag(L,w,'in default but no default interest charged');
+        if(start<=EPS && pen) flag(L,w,'default interest charged with nothing in default');
+        if(pen){
+          if(Math.abs(pen.owed-start)>EPS) flag(L,w,'charged on '+pen.owed+' but '+start+' was owed');
+          if(Math.abs(pen.pen-r2(start*pen.rate/100))>EPS) flag(L,w,'charge '+pen.pen+' is not '+pen.rate+'% of '+start);
+          const stepped=C.defRate+C.defStep*Math.floor((pen.defAge-1)/C.defEvery), wantRate=C.defCap>0?Math.min(stepped,C.defCap):stepped;
+          if(Math.abs(pen.rate-wantRate)>1e-9) flag(L,w,'rate '+pen.rate+'% in clock week '+pen.defAge+', expected '+wantRate+'%');
+          const wantAge = prevReset ? 1 : prevAge+1;
+          if(pen.defAge!==wantAge) flag(L,w,'clock week '+pen.defAge+', expected '+wantAge);
+          const lp=theirs.find(e=>e.w===w);
+          if(!lp || Math.abs(lp.pen-pen.pen)>EPS) flag(L,w,'lender side shows a different charge');
+        }
+        const charged = pen ? pen.pen : 0, def0 = start>EPS ? r2(start+charged) : 0;
+        if(Math.abs(end-(start+charged-pays+miss))>EPS) flag(L,w,'start '+start+' + charge '+charged+' \u2212 paid '+pays+' + missed '+miss+' \u2260 end '+end);
+        const wantReset = def0>EPS && pays >= C.defReset/100*def0-1e-6 && end>EPS;
+        if(reset!==wantReset) flag(L,w,'clock reset '+reset+', expected '+wantReset);
+        prevReset = reset || end<=EPS; prevAge = pen ? pen.defAge : 0; prevEnd = end;
+        if(!book) break;                        /* loan closed this week */
+      }
+    }
+    add('Every default replays week by week from the log: charge = rate \u00D7 amount owed, rate matches the clock, clock advances or resets as the rules say, and start + charge \u2212 paid + missed = end',
+        bad.length===0, loanWeeks.toLocaleString('en-IN')+' loan-weeks replayed'+(bad.length?'; '+bad.filter(Boolean).join('; '):''));
+  }
+
+  {
+    let n=0, bad=0;
+    for(const p of people){
+      for(const st of p.log.filter(e=>e.kind==='start' && e.w>1)){
+        const prev=p.log.filter(e=>e.w===st.w-1 && e.kind==='book');
+        const owe=r2(prev.filter(e=>e.side==='borrower').reduce((a,e)=>a+e.full,0));
+        const due=r2(prev.filter(e=>e.side==='lender').reduce((a,e)=>a+e.full,0));
+        n++; if(Math.abs(owe-st.owe)>EPS || Math.abs(due-st.owedToYou)>EPS) bad++;
+      }
+    }
+    add('What each week opens owing, and being owed, equals last week\u2019s closing loan book', bad===0, n.toLocaleString('en-IN')+' person-weeks, '+bad+' out');
+  }
+
+  /* ---- 5. loans sit in both parties' books ---- */
+  const linked=loans.every(L=>S.idx[L.bId].loans.indexOf(L)>=0 && S.idx[L.lId].given.indexOf(L)>=0 && L.bId!==L.lId);
+  add('Every loan is on the borrower\u2019s book and the lender\u2019s book, and nobody lends to themselves', linked,
+      loans.length.toLocaleString('en-IN')+' loans');
+
+  /* ---- 6. interest ---- */
+  const ip=sum(people,p=>p.interestPaid), ie=sum(people,p=>p.interestEarned);
+  add('Interest paid equals interest earned: no rupee appears or disappears in between',
+      Math.abs(ip-ie)<E && Math.abs(ip-S.cumPaid)<E, rs2(ip)+' paid, '+rs2(ie)+' earned');
+
+  /* ---- 7. ratings ---- */
+  add('No rating ever leaves the range set in the parameters',
+      people.every(p=>p.crSeries.every(v=>v>=C.crFloor-1e-9 && v<=C.crCap+1e-9)),
+      'between '+C.crFloor+' and '+C.crCap);
+
+  let rdBad=0, rdSeen=0, ptsBad=0;
+  const allowed=new Set([C.crPaidClean,-C.crMissClean,C.crPaidDef,-C.crMissDef,-C.crIdleDef].concat(C.clearTiers.map(t=>t.pts)));
+  for(const p of people){
+    p.log.filter(e=>e.rd).forEach((e,i)=>{
+      rdSeen++;
+      if(e.pts.some(x=>!allowed.has(x))) ptsBad++;
+      const tot=e.pts.reduce((a,x)=>a+x,0);
+      const want=Math.round((e.pts.length?(C.crBasis==='avg'?tot/e.pts.length:tot):0)*1000)/1000;
+      const from=i===0?C.crStart:p.crSeries[i-1], to=p.crSeries[i];
+      const landed=Math.max(C.crFloor,Math.min(C.crCap,from+want));
+      if(Math.abs(want-e.d)>1e-9 || Math.abs(e.crFrom-from)>1e-9 || Math.abs(landed-to)>1e-9) rdBad++;
+    });
+  }
+  add('Every loan\u2019s points come straight from the rating table', ptsBad===0, ptsBad+' person-weeks with an unknown score');
+  add('Every rating move is the '+(C.crBasis==='avg'?'average':'sum')+' of its loans\u2019 points, changed only by the floor and ceiling',
+      rdBad===0, rdSeen.toLocaleString('en-IN')+' person-weeks recomputed, '+rdBad+' wrong');
+
+  /* ---- 8. the rules that gate borrowing were respected when each loan was written ---- */
+  const capBad=loans.filter(L=>L.heldAtOrigin>=L.capAtOrigin || L.crAtOrigin<C.crNoLoan);
+  add('No loan was written to anyone already at their loan limit or below the exclusion rating',
+      capBad.length===0, capBad.length+' breaches');
+  const ceilBad=loans.filter(L=>L.exposureAtOrigin+L.principal>C.maxPrincipal+E);
+  add('No borrowing ever crossed the total borrowing ceiling',
+      ceilBad.length===0, 'ceiling '+rupees0(C.maxPrincipal)+', '+ceilBad.length+' breaches');
+  const riskBad=loans.filter(L=>!S.idx[L.lId].riskTaker && L.crAtOrigin<C.riskyBelow);
+  add('No cautious lender funded a borrower rated below the risky threshold',
+      riskBad.length===0, 'threshold '+C.riskyBelow+', '+riskBad.length+' breaches');
+
+  /* ---- 9. lenders never lend money they do not hold ---- */
+  let lendNeg=0;
+  for(const p of people) for(const e of p.log) if(e.kind==='loan' && e.amt<0 && e.bal<-0.005) lendNeg++;
+  add('No lender ever went into the red to fund a loan', lendNeg===0, lendNeg+' rows below zero after lending');
+
+  /* ---- 10. the net balance sheet ties back to the money in the system ---- */
+  const defAll=sum(loans.filter(L=>L.open),L=>L.arrP+L.arrI);
+  const nbSum=sum(people,p=>p.nb);
+  add('Net balance sheets across everyone equal the money held, less everything sitting in default',
+      Math.abs(nbSum-(pbSum-defAll))<0.5, rs2(nbSum)+' vs '+rs2(pbSum-defAll));
+
+  /* ---- 11. default interest obeys its own rules ---- */
+  let rateBad=false;
+  for(let age=1; age<=Math.max(52,W); age++){
+    const r=defRateFor(age,C);
+    const expect=C.defRate+C.defStep*Math.floor((age-1)/C.defEvery);
+    const want=C.defCap>0?Math.min(expect,C.defCap):expect;
+    if(Math.abs(r-want)>1e-9) rateBad=true;
+  }
+  add('Default interest steps up on schedule and respects its ceiling', !rateBad,
+      C.defRate+'% a week, +'+C.defStep+'% every '+C.defEvery+' weeks'+(C.defCap>0?', capped at '+C.defCap+'%':', uncapped'));
+  add('Default interest was only ever charged on loans actually in arrears',
+      loans.every(L=>!(L.penTotal>0) || L.missN>0), 'checked on all '+loans.length.toLocaleString('en-IN')+' loans');
+
+  /* ---- 12. the rate a borrower is offered follows the rating bands ---- */
+  const irBad=loans.filter(L=>Math.abs(L.rate-irFor(L.crAtOrigin,C))>1e-9);
+  add('Every loan was written at the rate its borrower\u2019s rating called for', irBad.length===0,
+      C.irBase+'% at a rating of '+C.irRefCR+', +'+C.irStep+'% every '+C.irBand+' points below');
+
+  /* ---- 13. arrears reported to the charts match the loan book ---- */
+  const laSum=sum(people,p=>p.lentArrearsP);
+  const arrP=sum(loans.filter(L=>L.open&&L.arrP>0),L=>L.arrP);
+  add('Lent principal in arrears, totalled across lenders, matches the loan book',
+      Math.abs(laSum-arrP)<E, rs2(laSum)+' vs '+rs2(arrP));
+
+  const okAll=out.every(x=>x.ok);
+  return {checks:out, passed:out.filter(x=>x.ok).length, total:out.length, ok:okAll};
+}
+
+if(typeof module!=='undefined' && module.exports){
+  module.exports={DEFAULTS, structured, newSession, advance, snapshot, runChecks,
+                  irFor, maxLoansFor, defRateFor, buildSchedule, nearestTenure, netSheet, CATS};
 }
 /* ==================================================================
    THE PAGE - everything below draws the model, none of it changes it.
@@ -1042,7 +1606,7 @@ const CATNAME = {
   D:'D \u2014 frequent default, regularises',
   E:'E \u2014 frequent default, no regularisation'
 };
-const TENNAME={'1':'4 weeks','2':'8 weeks','3':'12 weeks'};
+const TENNAME=new Proxy({},{get:(o,d)=>{ const t=(LASTC?LASTC.tenures:[DEFAULTS.tenure1,DEFAULTS.tenure2,DEFAULTS.tenure3])[(+d)-1]; return t===undefined?'?':t+' weeks'; }});
 const ARCHDASH={'11':undefined,'12':[7,4],'13':[2,4],'21':[12,5],'22':[1,5],'23':[10,4,2,4]};
 const GROUPINGS={
   arch:{ keys:c=>c, order:null, name:c=>c, color:c=>COLOR[c[0]], dash:c=>ARCHDASH[c.slice(1)] },
@@ -1157,70 +1721,84 @@ function catTable(note){
 }
 function limitTable(note){
   const {wrap,t}=tableShell(note);
-  t.innerHTML='<thead><tr><th>Upper rating limit</th><th>Lower rating limit</th><th>Maximum outstanding loans</th></tr></thead>';
+  t.innerHTML='<thead><tr><th>Rating</th><th>Maximum loans held at once</th></tr></thead>';
   const tb=document.createElement('tbody');
   const cell=(node)=>{const td=document.createElement('td'); td.appendChild(node); return td;};
-  const numIn=(k,aria)=>cellInput({k, t:'num', min:-1000, max:1000, step:1, aria});
-  const derived=(id)=>{const sp=document.createElement('span'); sp.id=id; sp.className='lim'; return sp;};
-
+  const txt=(s)=>{const sp=document.createElement('span'); sp.className='lim'; sp.textContent=s; return sp;};
+  const below=(k)=>{const d=document.createElement('div'); d.style.cssText='display:flex;align-items:center;gap:8px;justify-content:center';
+    d.appendChild(txt('Below')); d.appendChild(cellInput({k, t:'num', min:-1000, max:1000, step:1, aria:'Rating below'})); return d;};
+  const loans=(k)=>cellInput({k, t:'num', min:0, max:20, step:1, aria:'Maximum loans'});
   let tr=document.createElement('tr');
-  tr.appendChild(cell(numIn('crCap','Rating ceiling')));
-  tr.appendChild(cell(numIn('cr75','Lower rating limit')));
-  tr.appendChild(cell(cellInput({k:'maxLoans', t:'num', min:0, max:20, step:1, aria:'Maximum outstanding loans'})));
-  tb.appendChild(tr);
-
-  [['lim-u2','cr65','maxLoansAt75'],['lim-u3','crNoLoan','maxLoansAt65']].forEach(r=>{
-    const row=document.createElement('tr');
-    row.appendChild(cell(derived(r[0])));
-    row.appendChild(cell(numIn(r[1],'Lower rating limit')));
-    row.appendChild(cell(cellInput({k:r[2], t:'num', min:0, max:20, step:1, aria:'Maximum outstanding loans'})));
-    tb.appendChild(row);
-  });
-
+  tr.appendChild(cell(txt('Normally'))); tr.appendChild(cell(loans('maxLoans'))); tb.appendChild(tr);
+  [1,2,3].forEach(i=>{ const r=document.createElement('tr');
+    r.appendChild(cell(below('band'+i+'CR'))); r.appendChild(cell(loans('band'+i+'Max'))); tb.appendChild(r); });
   const last=document.createElement('tr');
-  last.appendChild(cell(derived('lim-u4')));
-  last.appendChild(cell(numIn('crFloor','Rating floor')));
-  const none=document.createElement('td'); none.innerHTML='<strong>None</strong>';
-  last.appendChild(none);
-  tb.appendChild(last);
+  last.appendChild(cell(below('crNoLoan')));
+  const none=document.createElement('td'); none.innerHTML='<strong>No new loans</strong>';
+  last.appendChild(none); tb.appendChild(last);
   t.appendChild(tb);
   return wrap;
 }
 function crTable(note){
   const {wrap,t}=tableShell(note);
-  t.innerHTML='<thead><tr><th>Event</th><th>Basis</th><th>Points</th><th>Per \u20B9 owed</th></tr></thead>';
+  t.innerHTML='<thead><tr><th>The loan, at the start of the week</th><th>What happened to it this week</th><th>Share of default cleared (%)</th><th>Rating change (points)</th></tr></thead>';
   const tb=document.createElement('tbody');
-  [['Instalment paid','crUpMode','crUp','crUpPer','rises'],
-   ['Instalment missed','crDownMode','crDown','crDownPer','falls']].forEach(r=>{
+  const pts=(k,aria)=>cellInput({k, t:'num', min:0, max:100, step:0.5, aria});
+  const pct=(k)=>cellInput({k, t:'num', min:0, max:100, step:1, aria:'Share of default cleared'});
+  const row=(a,b,c,d)=>{const tr=document.createElement('tr');
+    [a,b,c,d].forEach(x=>{const td=document.createElement('td'); if(typeof x==='string') td.innerHTML=x; else if(x) td.appendChild(x); tr.appendChild(td);});
+    tb.appendChild(tr);};
+  row('Not in default','Paid the instalment when due','\u2014', signed('+',pts('crPaidClean','Not in default, paid')));
+  row('Not in default','Did not pay the instalment when due','\u2014', signed('\u2212',pts('crMissClean','Not in default, missed')));
+  row('In default','Paid the instalment when due','\u2014', signed('+',pts('crPaidDef','In default, paid')));
+  row('In default','Did not pay the instalment when due','\u2014', signed('\u2212',pts('crMissDef','In default, missed')));
+  [1,2,3,4].forEach(i=>row('In default','Paid the instalment and cleared at least', pct('clr'+i), signed('+',pts('crClr'+i,'Clearing tier '+i))));
+  row('In default','Nothing due and nothing cleared','\u2014', signed('\u2212',pts('crIdleDef','In default, idle week')));
+  t.appendChild(tb);
+  const h=document.createElement('p'); h.className='hint'; h.style.marginTop='10px';
+  h.textContent='The rating is always kept between the highest and lowest possible ratings set under Credit rating.';
+  wrap.appendChild(h);
+  return wrap;
+}
+function signed(sign,input){
+  const d=document.createElement('div'); d.style.cssText='display:flex;align-items:center;gap:6px;justify-content:center';
+  const sp=document.createElement('span'); sp.className='lim'; sp.textContent=sign; d.appendChild(sp); d.appendChild(input); return d;
+}
+function biasTable(note){
+  const {wrap,t}=tableShell(note);
+  t.innerHTML='<thead><tr><th>Rating</th>'+CATS.map(k=>'<th><span class="catchip" style="background:'+COLOR[k]+'">'+k+'</span><br>Group '+k+' (\u20B9 a week)</th>').join('')+'</tr></thead>';
+  const tb=document.createElement('tbody');
+  [1,2,3,4].forEach(i=>{
     const tr=document.createElement('tr');
-    const lab=document.createElement('td'); lab.textContent=r[0]+' \u2014 rating '+r[4];
-    const m=document.createElement('td');
-    m.appendChild(cellInput({k:r[1], t:'select', aria:r[0]+' basis',
-      opts:[['week','Once a week, whatever the count'],
-            ['instalment','Once per instalment'],
-            ['amount','By amount outstanding']]}));
-    const pts=document.createElement('td'); pts.appendChild(cellInput({k:r[2], t:'num', min:0, max:100, step:0.5, aria:r[0]+' points'}));
-    const per=document.createElement('td'); per.appendChild(cellInput({k:r[3], t:'num', min:1, max:1000000, step:100, aria:r[0]+' per rupees outstanding'}));
-    tr.appendChild(lab); tr.appendChild(m); tr.appendChild(pts); tr.appendChild(per); tb.appendChild(tr);
+    const td0=document.createElement('td');
+    td0.appendChild(signed('Below',cellInput({k:'bias'+i+'CR', t:'num', min:-1000, max:1000, step:1, aria:'Bias tier '+i+' rating'})));
+    tr.appendChild(td0);
+    CATS.forEach(k=>{ const td=document.createElement('td');
+      td.appendChild(cellInput({k:k+'_bias'+i, t:'num', min:0, max:100000, step:100, aria:'Group '+k+' bias at tier '+i}));
+      tr.appendChild(td); });
+    tb.appendChild(tr);
   });
   t.appendChild(tb);
   return wrap;
 }
-function syncLimits(){
-  const g=k=>{const e=$('f_'+k); return e?e.value:'';};
-  const set=(id,v)=>{const e=$(id); if(e) e.textContent=v;};
-  set('lim-u2', 'Below '+g('cr75'));
-  set('lim-u3', 'Below '+g('cr65'));
-  set('lim-u4', 'Below '+g('crNoLoan'));
-}
-function syncCrBasis(){
-  [['crUpMode','crUpPer'],['crDownMode','crDownPer']].forEach(pair=>{
-    const m=$('f_'+pair[0]), per=$('f_'+pair[1]);
-    if(!m||!per) return;
-    const off = m.value!=='amount';
-    per.disabled=off;
-    per.style.visibility = off ? 'hidden' : 'visible';
+function fieldsTable(fields){
+  const {wrap,t}=tableShell(null);
+  t.innerHTML='<thead><tr><th style="text-align:left">Setting</th><th>Value</th><th style="text-align:left">What it does</th></tr></thead>';
+  const tb=document.createElement('tbody');
+  fields.forEach(f=>{
+    const tr=document.createElement('tr');
+    const a=document.createElement('td'); const lab=document.createElement('label'); lab.htmlFor='f_'+f.k; lab.textContent=f.l; a.appendChild(lab);
+    const b=document.createElement('td'); b.style.minWidth='170px';
+    let el;
+    if(f.t==='text'){ el=document.createElement('input'); el.type='text'; el.id='f_'+f.k; }
+    else el=cellInput(f);
+    if(f.t==='select'){ el.style.textAlign='left'; el.style.minWidth='240px'; }
+    b.appendChild(el);
+    const c=document.createElement('td'); c.className='hint'; c.style.cssText='text-align:left;white-space:normal;font-size:.86rem;max-width:44ch'; c.textContent=f.h||'';
+    tr.appendChild(a); tr.appendChild(b); tr.appendChild(c); tb.appendChild(tr);
   });
+  t.appendChild(tb);
+  return wrap;
 }
 function buildForm(){
   const host=$('form'); host.innerHTML='';
@@ -1230,8 +1808,8 @@ function buildForm(){
     if(group.table==='cats'){ host.appendChild(catTable(group.note)); return; }
     if(group.table==='limits'){ host.appendChild(limitTable(group.note)); return; }
     if(group.table==='cr'){ host.appendChild(crTable(group.note)); return; }
-    const g=document.createElement('div'); g.className='grid'; host.appendChild(g);
-    group.fields.forEach(f=>g.appendChild(fieldEl(f)));
+    if(group.table==='bias'){ host.appendChild(biasTable(group.note)); return; }
+    host.appendChild(fieldsTable(group.fields));
   });
 }
 function writeForm(vals){
@@ -1249,14 +1827,62 @@ function readForm(){
   });
   return raw;
 }
-buildForm(); writeForm(DEFAULTS); syncLimits(); syncCrBasis();
-['cr75','cr65','crNoLoan'].forEach(k=>{
-  const e=$('f_'+k); if(e) e.addEventListener('input', syncLimits);
-});
-['crUpMode','crDownMode'].forEach(k=>{
-  const e=$('f_'+k); if(e) e.addEventListener('change', syncCrBasis);
-});
-$('reset').onclick=()=>{ writeForm(DEFAULTS); syncLimits(); syncCrBasis(); };
+buildForm(); writeForm(DEFAULTS);
+
+/* ---------- saved settings (kept in this browser) ----------
+   p2psim:presets   { name: {vals, saved} }  settings the user has named
+   p2psim:last      vals                     whatever was last on screen
+   p2psim:scenarios [...]                    the comparison table        */
+const STORE = {
+  get(k, fallback){ try{ const v=localStorage.getItem(k); return v===null?fallback:JSON.parse(v); }catch(e){ return fallback; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); return true; }catch(e){ return false; } }
+};
+const withDefaults = vals => { const out={}; Object.keys(DEFAULTS).forEach(k=>out[k]=(vals && vals[k]!==undefined)?vals[k]:DEFAULTS[k]);
+  if(out.crBasis!=='avg') out.crBasis='sum';  /* older saves used 'week' or 'instalment' */
+  return out; };
+function savedMsg(text, cls){ const m=$('saved-msg'); m.textContent=text; m.className='hint'+(cls?' '+cls:''); }
+function presets(){ const p=STORE.get('p2psim:presets',{}); return (p && typeof p==='object')?p:{}; }
+function fillPresetList(select){
+  const p=presets(), names=Object.keys(p).sort((a,b)=>a.localeCompare(b));
+  const sel=$('preset-list');
+  sel.innerHTML = names.length
+    ? names.map(n=>{ const o=document.createElement('option'); o.value=n;
+        const d=p[n].saved?new Date(p[n].saved):null;
+        o.textContent=n+(d?' \u2014 saved '+d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}):''); return o.outerHTML; }).join('')
+    : '<option value="">Nothing saved yet</option>';
+  if(select && names.includes(select)) sel.value=select;
+  $('preset-load').disabled = $('preset-del').disabled = !names.length;
+}
+function rememberLast(){ STORE.set('p2psim:last', readForm()); }
+$('form').addEventListener('input', rememberLast);
+$('form').addEventListener('change', rememberLast);
+
+$('preset-save').onclick=()=>{
+  const name=$('preset-name').value.trim();
+  if(!name){ savedMsg('Type a name first, then press Save settings.','bad'); $('preset-name').focus(); return; }
+  const p=presets();
+  if(p[name] && !confirm('There are already settings called "'+name+'". Replace them with what is on screen now?')) return;
+  p[name]={vals:readForm(), saved:new Date().toISOString()};
+  if(STORE.set('p2psim:presets',p)){ fillPresetList(name); savedMsg('Saved as "'+name+'".','ok'); }
+  else savedMsg('This browser would not let the page save settings.','bad');
+};
+$('preset-load').onclick=()=>{
+  const name=$('preset-list').value, p=presets()[name]; if(!p) return;
+  writeForm(withDefaults(p.vals)); rememberLast();
+  $('preset-name').value=name;
+  savedMsg('Opened "'+name+'". Go to Run & results and press a week button to run with these settings.','ok');
+};
+$('preset-del').onclick=()=>{
+  const name=$('preset-list').value, p=presets(); if(!p[name]) return;
+  if(!confirm('Delete the saved settings called "'+name+'"? This cannot be undone.')) return;
+  delete p[name]; STORE.set('p2psim:presets',p); fillPresetList(); savedMsg('Deleted "'+name+'".','ok');
+};
+fillPresetList();
+(function restoreLast(){
+  const last=STORE.get('p2psim:last',null);
+  if(last && typeof last==='object'){ writeForm(withDefaults(last)); savedMsg('Welcome back \u2014 your last settings have been put back on screen. Restore specification defaults puts every parameter back to the values in the specification.','ok'); }
+})();
+$('reset').onclick=()=>{ writeForm(DEFAULTS); rememberLast(); savedMsg('Back to the specification defaults.','ok'); };
 
 /* ---------- running and stepping ---------- */
 let SESS=null;
@@ -1363,6 +1989,7 @@ function render(){
   document.querySelectorAll('#results-body > .card').forEach(c=>c.style.display = atZero?'none':'');
   $('people-empty').style.display = atZero?'block':'none';
   $('people-body').style.display = atZero?'none':'block';
+  $('checks-out').innerHTML='';
   if(atZero) return;
 
   const W=LAST.weekly, C=LASTC, cats=LAST.cats, last=W[W.length-1];
@@ -1380,6 +2007,7 @@ function render(){
     ['In default at horizon', asNumber(last.behind)+' of '+totalPeople],
     ['Principal outstanding', rupees0(last.outstanding)],
     ['Lent principal in arrears', rupees0(last.arrearsP)],
+    ['Default owed (incl. default interest)', rupees0(last.defaultOwed)],
     ['\u2026 owed by groups that never regularise', rupees0(last.arrearsPStuck)],
     ['Requests with no lender', unfundedPct.toFixed(0)+'%'],
     ['Requests refused by the rules', blockedPct.toFixed(0)+'%']
@@ -1394,6 +2022,13 @@ function render(){
   bits.push(asNumber(last.behind)+' of '+totalPeople+' participants are in default, and '+lockedOut+' sit below '+C.crNoLoan+' and are excluded from new borrowing.');
   const frozen=ppl.filter(p=>p.loans.filter(L=>L.open).length > maxLoansFor(p.cr,C)).length;
   if(frozen) bits.push(frozen+' participants hold more loans than their current rating permits. Nothing is called in; they are simply unable to borrow again until enough loans run off.');
+  const endNB=cats.map(k=>[k,catAvg(last,k,'nb')]).sort((a,b)=>b[1]-a[1]);
+  bits.push('Net balance sheet: group <strong>'+endNB[0][0]+'</strong> is best off at a mean of '+rupees0(endNB[0][1])+
+    ', group <strong>'+endNB[endNB.length-1][0]+'</strong> worst at '+rupees0(endNB[endNB.length-1][1])+
+    '. '+ppl.filter(p=>p.nb<0).length+' of '+totalPeople+' participants owe more than they hold and are owed.');
+  if(last.defaultOwed>0.5) bits.push(rupees0(last.defaultOwed)+' is sitting in default, of which default interest built up to date is '+rupees0(last.penaltyCum)+
+    ' (charged, not necessarily collected). Across everyone, net balance sheets add up to '+rupees0(last.netTotal)+
+    ': every rupee of net income drawn, less the default that borrowers owe but lenders do not count.');
   bits.push('Cumulative interest is '+rupees0(last.cumPaid)+', roughly '+rupees0(last.cumPaid/totalPeople)+' per participant.');
   if(last.arrearsP>0) bits.push(rupees0(last.arrearsP)+' of lent principal is in arrears'+
     (last.cumEarned>0 ? ', '+asNumber(last.arrearsP/last.cumEarned)+' times the interest lenders have earned' : '')+
@@ -1446,12 +2081,16 @@ function drawLive(atZero){
        ['Principal outstanding', rupees0(now.outstanding)],
        ['Interest to date', rupees0(now.cumPaid)],
        ['Lent principal in arrears', rupees0(now.arrearsP)],
+       ['Default owed (incl. default interest)', rupees0(now.defaultOwed)],
+       ['Default interest charged this week', rs2(now.penaltyWeek)],
        ['Requests declined this week', asNumber(now.unfunded+now.blocked)]];
   $('runlive').innerHTML = cells.map(c=>'<div class="stat"><span class="k">'+c[0]+'</span><span class="v">'+c[1]+'</span></div>').join('');
 }
 
 const METRICS=[
   ['panel-pb','pb','Mean pillow bank', v=>rupees0(v)],
+  ['panel-nb','nb','Mean net balance sheet', v=>rupees0(v)],
+  ['panel-dout','dout','Mean default owed', v=>rupees0(v)],
   ['panel-cr','cr','Mean credit rating', v=>asNumber(v)],
   ['panel-def','def','Participants in default', v=>asNumber(v)],
   ['panel-lock','lock','Excluded from borrowing', v=>asNumber(v)],
@@ -1641,7 +2280,12 @@ function drawPerson(id){
     ['Archetype', p.code+' \u2014 '+(p.riskTaker?'risk-taking':'cautious')+', '+p.prefTenure+'-week tenure'],
     ['Group', CATNAME[p.cat]],
     ['Pillow bank', rupees0(p.pb)],
-    ['Credit rating', p.cr.toFixed(0)],
+    ['Net balance sheet', rupees0(p.nb)],
+    ['Credit rating', asNumber(p.cr)],
+    ['Rate on a new loan', irFor(p.cr,C).toFixed(1)+'%'],
+    ['Loans allowed at this rating', maxLoansFor(p.cr,C)],
+    ['Default owed (incl. default interest)', rupees0(p.defOwed)],
+    ['Effort bias this week', p.biasAmt?'+'+rupees0(p.biasAmt):'None'],
     ['Status', p.inDefault?'<span class="tag def">Default</span>':'<span class="tag reg">Regular</span>'],
     ['Loans taken / given', p.loansTaken+' / '+p.loansGiven],
     ['Instalments paid / missed', p.paid+' / '+p.missed],
@@ -1666,6 +2310,11 @@ function drawPerson(id){
     {label:p.name+' \u2014 end of week', data:p.pbSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5}
   ]), 'Pillow bank (\u20B9)', asRupees, null, {legend:false});
 
+  draw('c-person-nb', labels, faint('nb').concat([
+    {label:p.name+' \u2014 net balance sheet', data:p.nbSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5},
+    {label:p.name+' \u2014 pillow bank', data:p.pbSeries, borderColor:'#6E808D', backgroundColor:'#6E808D', borderDash:[6,4], borderWidth:2}
+  ]), 'Rupees', asRupees, null, {legend:false});
+
   draw('c-person-cr', labels, faint('cr').concat([
     {label:p.name+' credit rating', data:p.crSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5},
     {label:'Exclusion threshold', data:labels.map(()=>C.crNoLoan), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[6,4], borderWidth:2}
@@ -1681,33 +2330,19 @@ function drawPerson(id){
   renderLog();
 }
 
-/* ---------- NEW: the audit log ---------- */
+/* ---------- the audit log ---------- */
 const KIND={
-  start:['Week opens','inf'], surplus:['Surplus','neu'], due:['Due','neu'], market:['Position','inf'],
+  start:['Week opens','inf'], surplus:['Income','neu'], due:['Due','neu'], market:['Market','inf'],
   paid:['Paid','reg'], received:['Received','reg'], arrears:['Arrears paid','reg'], prepay:['Prepaid','reg'],
   missed:['Missed','def'], notreceived:['Not received','def'], loan:['Loan','warn'], closed:['Closed','reg'],
   refused:['Refused','def'], status:['Status','neu'], book:['Loan book','neu'], rating:['Rating','inf'],
-  end:['Week closes','inf'], info:['Note','neu']
+  end:['Week closes','inf'], info:['Note','neu'], penalty:['Default interest','warn'], net:['Balance sheet','inf'],
+  summary:['Totals','inf'], defnote:['Default','def'], schedule:['Schedule','neu'], bias:['Effort','neu']
 };
-const MONEYKINDS=new Set(['start','surplus','paid','received','arrears','prepay','loan','market','end']);
-const LOANKINDS=new Set(['start','due','paid','received','arrears','prepay','missed','notreceived','loan','closed','refused','book','end']);
+const MONEYKINDS=new Set(['start','surplus','bias','paid','received','arrears','prepay','loan','market','end']);
+const LOANKINDS=new Set(['schedule','defnote','start','due','paid','received','arrears','prepay','missed','notreceived','loan','closed','refused','book','penalty','net','summary','end']);
 
-function logRows(p){
-  /* the engine log plus a rating row for each week, placed before "week closes" */
-  const C=LASTC, out=[];
-  const ratingRow = w => {
-    const before = w===1 ? C.crStart : p.crSeries[w-2], after=p.crSeries[w-1], d=after-before;
-    return {w, kind:'rating', txt: Math.abs(d)<1e-9
-      ? 'Credit rating unchanged at '+asNumber(after)+'.'
-      : 'Credit rating '+asNumber(before)+' \u2192 '+asNumber(after)+' ('+(d>0?'+':'\u2212')+asNumber(Math.abs(d))+').', d};
-  };
-  let lastW=0;
-  for(const e of p.log){
-    if(e.kind==='end') out.push(ratingRow(e.w));
-    out.push(e); lastW=e.w;
-  }
-  return out;
-}
+function logRows(p){ return p.log; }
 function renderLog(){
   const p=CURRENT_PERSON; if(!p) return;
   const wSel=$('log-week').value, kSel=$('log-kind').value;
@@ -1743,6 +2378,27 @@ $('csv-log').onclick=()=>{
   download('p2p-log-'+p.name+'.csv',[head.join(',')].concat(rows.map(r=>r.join(','))).join('\n'));
 };
 
+/* ---------- integrity checks ---------- */
+let CHECKS=null;
+$('run-checks').onclick=()=>{
+  if(!SESS){ $('checks-out').innerHTML='<p class="hint">Advance the simulation first \u2014 there is nothing to check at week 0.</p>'; return; }
+  const r=runChecks(SESS.runs[0]);
+  CHECKS=r;
+  const head='<p class="checkhead '+(r.ok?'ok':'bad')+'">'+
+    (r.ok? 'All '+r.total+' checks pass at week '+SESS.runs[0].week+'.'
+         : (r.total-r.passed)+' of '+r.total+' checks failed at week '+SESS.runs[0].week+'.')+'</p>';
+  const rows=r.checks.map(c=>'<tr><td class="nm">'+c.name+'</td><td><span class="tag '+(c.ok?'reg':'def')+'">'+
+    (c.ok?'Pass':'Fail')+'</span></td><td class="det">'+c.detail+'</td></tr>').join('');
+  $('checks-out').innerHTML=head+'<div class="tablescroll" style="margin-top:10px"><table class="checktable">'+
+    '<thead><tr><th style="text-align:left">Check</th><th style="width:90px">Result</th><th style="text-align:left">Detail</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+};
+$('csv-checks').onclick=()=>{
+  if(!CHECKS){ $('checks-out').innerHTML='<p class="hint">Run the checks first, then export them.</p>'; return; }
+  const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
+  const rows=CHECKS.checks.map(c=>[q(c.name), c.ok?'pass':'fail', q(c.detail)].join(','));
+  download('p2p-checks.csv',['check,result,detail'].concat(rows).join('\n'));
+};
+
 /* ---------- status at the horizon ---------- */
 let statusSort={key:null, dir:1};
 function renderStatus(){
@@ -1761,7 +2417,7 @@ function renderStatus(){
       ['posture','Posture',p=>p.riskTaker?1:0, p=>p.riskTaker?'Risk-taking':'Cautious'],
       ['tenure','Tenure',p=>p.prefTenure, p=>p.prefTenure+'w'],
       ['pb','Pillow bank',p=>p.pb, p=>rupees0(p.pb)],
-      ['cr','Rating',p=>p.cr, p=>p.cr.toFixed(0)],
+      ['cr','Rating',p=>p.cr, p=>asNumber(p.cr)],
       ['status','Status',p=>p.inDefault?1:0, p=>tag(p.inDefault)],
       ['open','Loans open',p=>openOf(p)],
       ['cap','Allowed',p=>maxLoansFor(p.cr,C)],
@@ -1774,7 +2430,9 @@ function renderStatus(){
       ['ip','Interest paid',p=>p.interestPaid, p=>rupees0(p.interestPaid)],
       ['ie','Interest earned',p=>p.interestEarned, p=>rupees0(p.interestEarned)],
       ['la','Lent, in arrears',p=>p.lentArrearsP, p=>rupees0(p.lentArrearsP)],
-      ['net','Net',p=>p.interestEarned-p.interestPaid, p=>rupees0(p.interestEarned-p.interestPaid)]
+      ['dout','Default owed',p=>p.defOwed, p=>rupees0(p.defOwed)],
+      ['inet','Interest net',p=>p.interestEarned-p.interestPaid, p=>rupees0(p.interestEarned-p.interestPaid)],
+      ['nb','Net balance sheet',p=>p.nb, p=>rupees0(p.nb)]
     ];
     rows=ppl.slice();
     $('status-note').textContent='One row per participant at week '+LAST.week+
@@ -1802,7 +2460,9 @@ function renderStatus(){
       ['ip','Interest paid',r=>sum(r.g,p=>p.interestPaid), r=>rupees0(sum(r.g,p=>p.interestPaid))],
       ['ie','Interest earned',r=>sum(r.g,p=>p.interestEarned), r=>rupees0(sum(r.g,p=>p.interestEarned))],
       ['la','Lent, in arrears',r=>sum(r.g,p=>p.lentArrearsP), r=>rupees0(sum(r.g,p=>p.lentArrearsP))],
-      ['net','Net',r=>sum(r.g,p=>p.interestEarned-p.interestPaid), r=>rupees0(sum(r.g,p=>p.interestEarned-p.interestPaid))]
+      ['dout','Default owed',r=>sum(r.g,p=>p.defOwed), r=>rupees0(sum(r.g,p=>p.defOwed))],
+      ['inet','Interest net',r=>sum(r.g,p=>p.interestEarned-p.interestPaid), r=>rupees0(sum(r.g,p=>p.interestEarned-p.interestPaid))],
+      ['nb','Mean net balance sheet',r=>mean(r.g,p=>p.nb), r=>rupees0(mean(r.g,p=>p.nb))]
     ];
     $('status-note').textContent=(mode==='cat'?'Five groups':'Thirty archetypes')+
       ' at week '+LAST.week+'. Counts are totals, ratings and pillow banks are means.'+
@@ -1833,8 +2493,9 @@ $('save-scenario').onclick=()=>{
   const asked=LAST.weekly.reduce((s,r)=>s+r.made+r.unfunded+r.blocked,0);
   const unmetPct=asked?100*LAST.weekly.reduce((s,r)=>s+r.unfunded+r.blocked,0)/asked:0;
   scenarios.push({
-    when:new Date().toLocaleTimeString(),
-    weeks:LAST.week, runs:C.runs, up:C.crUp, down:C.crDown,
+    name: ($('preset-name').value.trim() || 'Unnamed settings'),
+    when:new Date().toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),
+    weeks:LAST.week, runs:C.runs, up:(C.crBasis==='avg'?'Averaged: ':'Summed: ')+'+'+C.crPaidClean+' / +'+C.crPaidDef, down:'\u2212'+C.crMissClean+' / \u2212'+C.crMissDef,
     rate:C.irBase+'% '+({year:'yearly',month:'monthly',term:'one-off'})[C.irPeriod],
     behind:last.behind, paid:last.cumPaid, arrears:last.arrearsP,
     loans:LAST.weekly.reduce((s,r)=>s+r.made,0),
@@ -1842,21 +2503,22 @@ $('save-scenario').onclick=()=>{
     pb:Object.fromEntries(LAST.cats.map(k=>[k,catAvg(last,k,'pb')])),
     cr:Object.fromEntries(LAST.cats.map(k=>[k,catAvg(last,k,'cr')]))
   });
-  drawCompare(); show('compare');
+  STORE.set('p2psim:scenarios', scenarios); drawCompare(); show('compare');
 };
-$('clear-scenarios').onclick=()=>{ scenarios.length=0; drawCompare(); };
+$('clear-scenarios').onclick=()=>{ if(scenarios.length && !confirm('Clear every run from the comparison?')) return; scenarios.length=0; STORE.set('p2psim:scenarios', scenarios); drawCompare(); };
 function drawCompare(){
   const t=$('t-compare');
   if(!scenarios.length){ t.innerHTML='<tbody><tr><td style="text-align:left;padding:30px">No runs added yet. Use <strong>Add this run to the comparison</strong> at the foot of the Results page.</td></tr></tbody>'; return; }
   const cats=CATS;
-  const heads=['Added','Weeks','Repetitions','Rise X','Fall Y','Interest','Originated','Requests refused','In default','Interest paid','Lent principal in arrears'].concat(cats.map(k=>'PB '+k)).concat(cats.map(k=>'Rating '+k));
+  const heads=['Settings','Added','Weeks','Repetitions','Paid (clean / default)','Missed (clean / default)','Interest','Originated','Requests refused','In default','Interest paid','Lent principal in arrears'].concat(cats.map(k=>'PB '+k)).concat(cats.map(k=>'Rating '+k));
   t.innerHTML='<thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+
     scenarios.map(s=>'<tr>'+[
-      s.when, s.weeks, s.runs, s.up, s.down, s.rate,
+      (s.name||'\u2014'), s.when, s.weeks, s.runs, s.up, s.down, s.rate,
       Math.round(s.loans), s.unmet.toFixed(0)+'%', asNumber(s.behind), rupees0(s.paid), rupees0(s.arrears)
     ].concat(cats.map(k=>s.pb[k]===undefined?'\u2014':rupees0(s.pb[k]))).concat(cats.map(k=>s.cr[k]===undefined?'\u2014':s.cr[k].toFixed(0)))
      .map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody>';
 }
+(STORE.get('p2psim:scenarios',[])||[]).forEach(x=>scenarios.push(x));
 drawCompare();
 
 /* ---------- downloads ----------
@@ -1881,16 +2543,18 @@ async function download(name, text){
 $('csv-week').onclick=()=>{
   const codes=Object.keys(LAST.weekly[LAST.weekly.length-1].by).sort();
   const head=['week'].concat(codes.map(c=>'pillow_bank_'+c)).concat(codes.map(c=>'credit_rating_'+c))
-    .concat(codes.map(c=>'in_default_'+c)).concat(codes.map(c=>'interest_paid_'+c)).concat(codes.map(c=>'interest_earned_'+c)).concat(['loans_made','loan_value','requests_unfunded','requests_blocked','interest_paid_cumulative','interest_earned_cumulative','outstanding','lent_principal_in_arrears','of_which_non_regularising']);
+    .concat(codes.map(c=>'in_default_'+c)).concat(codes.map(c=>'interest_paid_'+c)).concat(codes.map(c=>'interest_earned_'+c))
+    .concat(codes.map(c=>'net_balance_sheet_'+c)).concat(codes.map(c=>'default_owed_'+c)).concat(['default_owed_total','default_interest_this_week','default_interest_cumulative','loans_made','loan_value','requests_unfunded','requests_blocked','interest_paid_cumulative','interest_earned_cumulative','outstanding','lent_principal_in_arrears','of_which_non_regularising']);
   const cell=(r,c,f)=>{const b=r.by[c];return b&&b.n?(f==='def'?b.def:b[f]/b.n).toFixed(2):'';};
   const rows=LAST.weekly.map(r=>[r.week].concat(codes.map(c=>cell(r,c,'pb'))).concat(codes.map(c=>cell(r,c,'cr')))
-    .concat(codes.map(c=>cell(r,c,'def'))).concat(codes.map(c=>cell(r,c,'ip'))).concat(codes.map(c=>cell(r,c,'ie'))).concat([r.made.toFixed(2),r.madeValue.toFixed(2),r.unfunded.toFixed(2),r.blocked.toFixed(2),r.cumPaid.toFixed(2),r.cumEarned.toFixed(2),r.outstanding.toFixed(2),r.arrearsP.toFixed(2),r.arrearsPStuck.toFixed(2)]));
+    .concat(codes.map(c=>cell(r,c,'def'))).concat(codes.map(c=>cell(r,c,'ip'))).concat(codes.map(c=>cell(r,c,'ie')))
+    .concat(codes.map(c=>cell(r,c,'nb'))).concat(codes.map(c=>cell(r,c,'dout'))).concat([r.defaultOwed.toFixed(2),r.penaltyWeek.toFixed(2),r.penaltyCum.toFixed(2),r.made.toFixed(2),r.madeValue.toFixed(2),r.unfunded.toFixed(2),r.blocked.toFixed(2),r.cumPaid.toFixed(2),r.cumEarned.toFixed(2),r.outstanding.toFixed(2),r.arrearsP.toFixed(2),r.arrearsPStuck.toFixed(2)]));
   download('p2p-weeks.csv',[head.join(',')].concat(rows.map(r=>r.join(','))).join('\n'));
 };
 $('csv-people').onclick=()=>{
-  const head=['person','subtype','group','lending_style','wants_weeks','pillow_bank','credit_rating','behind','loans_taken','loans_given','instalments_paid','instalments_missed','weeks_behind','times_refused','interest_paid','interest_earned','lent_principal_in_arrears'];
+  const head=['person','subtype','group','lending_style','wants_weeks','pillow_bank','credit_rating','behind','loans_taken','loans_given','instalments_paid','instalments_missed','weeks_behind','times_refused','interest_paid','interest_earned','lent_principal_in_arrears','default_owed','net_balance_sheet'];
   const rows=LAST.detail.people.map(p=>[p.name,p.code,p.cat,p.riskTaker?'risk-taker':'cautious',p.prefTenure,p.pb.toFixed(2),p.cr.toFixed(2),p.inDefault?'yes':'no',
-    p.loansTaken,p.loansGiven,p.paid,p.missed,p.weeksBehind,p.refused,p.interestPaid.toFixed(2),p.interestEarned.toFixed(2),p.lentArrearsP.toFixed(2)]);
+    p.loansTaken,p.loansGiven,p.paid,p.missed,p.weeksBehind,p.refused,p.interestPaid.toFixed(2),p.interestEarned.toFixed(2),p.lentArrearsP.toFixed(2),p.defOwed.toFixed(2),p.nb.toFixed(2)]);
   download('p2p-people.csv',[head.join(',')].concat(rows.map(r=>r.join(','))).join('\n'));
 };
 
