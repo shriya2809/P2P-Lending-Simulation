@@ -528,6 +528,7 @@ const DEFAULTS = {
 
   /* --- loans --- */
   loanAmounts: '1000,2000,3000,4000,5000',
+  loanPick: 'random',
 
   /* --- borrowing limit until a track record is built (empty = off) --- */
   trackRows: '[]',
@@ -576,7 +577,8 @@ const FORM = [
     {k:'borrowBelow', l:'Must borrow below (\u20B9)', t:'num', min:-1000000, max:0, step:100, h:'At or below this, the person has to borrow.'}
   ]},
   { title:'Loans', fields:[
-    {k:'loanAmounts', l:'Loan sizes available (\u20B9)', t:'text', h:'Comma separated. A borrower takes the smallest size that covers this week\u2019s instalments, which lands them back between the two thresholds. If no lender can fund it, they take the largest smaller size someone can.'},
+    {k:'loanAmounts', l:'Loan sizes available (\u20B9)', t:'text', h:'Comma separated. Which size a borrower takes is set just below.'},
+    {k:'loanPick', l:'Loan size taken', t:'select', opts:[['random','Any size that covers the need, picked at random'],['smallest','The smallest size that covers the need']], h:'Random: the borrower tries every size that covers this week\u2019s need, in random order, and only if no lender can fund any of them takes the largest smaller size someone can. Bigger loans mean more interest, and borrowed money sitting unused. Smallest: just enough to get back to zero after this week\u2019s instalments.'},
     {k:'maxPrincipal', l:'Maximum total borrowing (\u20B9)', t:'num', min:1000, max:1000000, step:1000, h:'Across all open loans together, not per loan.'},
     {k:'tenure1', l:'Loan period \u2014 short (weeks)', t:'num', min:1, max:260, step:1, h:'Archetypes ending in 1 ask for this.'},
     {k:'tenure2', l:'Loan period \u2014 medium (weeks)', t:'num', min:1, max:260, step:1, h:'Archetypes ending in 2 ask for this.'},
@@ -662,6 +664,7 @@ function structured(raw){
   C.tenures = [C.tenure1, C.tenure2, C.tenure3].map(t=>Math.max(1,Math.round(t)));
   C.irMode = String(raw.irMode); C.crBasis = String(raw.crBasis)==='avg' ? 'avg' : 'sum'; C.irPeriod = String(raw.irPeriod); C.irRound = String(raw.irRound);
   C.biasWhen = String(raw.biasWhen);
+  C.loanPick = String(raw.loanPick)==='smallest' ? 'smallest' : 'random';
   /* track-record rows: [{amt, x, y}], ignored unless both an amount and a number of weeks are given */
   let tr=[]; try{ tr=JSON.parse(raw.trackRows||'[]'); }catch(e){ tr=[]; }
   const num=v=>(v===''||v===null||v===undefined||isNaN(parseFloat(v)))?NaN:parseFloat(v);
@@ -1116,7 +1119,10 @@ function stepWeek(S){
     const covering = C.amounts.filter(a=>a<=room && (b.pb+a) >= needNow - EPS);
     const helping  = C.amounts.filter(a=>a<=room && (b.pb+a) <  needNow - EPS).sort((x,y)=>y-x);
     if(!covering.length && !helping.length){ blocked++; b.refused++; b.borrowOutcome='no loan size fits under the borrowing limit'; note(b,'Could not borrow '+rupees0(need)+': no loan size fits under the borrowing limit.',{kind:'refused', request:true}); continue; }
-    const ladder = covering.slice(0,1).concat(helping);
+    /* random: every size that covers the need, in random order; smallest: just the
+       smallest (any lender able to fund a bigger one could fund it too). Then, if no
+       lender could fund any of those, smaller sizes, largest first. */
+    const ladder = (C.loanPick==='smallest' ? covering.slice(0,1) : shuffle(covering.slice(), rng)).concat(helping);
     const coverSize = covering.length ? covering[0] : null;
     const tenure = nearestTenure(b.prefTenure, C.tenures);
     const rate   = irFor(b.cr, C);
@@ -1142,19 +1148,19 @@ function stepWeek(S){
                   paidP:0, paidN:0, missN:0,
                   crAtOrigin:b.cr, capAtOrigin:maxLoansFor(b.cr,C), heldAtOrigin:openLoans.length,
                   exposureAtOrigin:openLoans.reduce((s,x)=>s+x.outstanding,0),
-                  needAtOrigin:need, duesAtOrigin:needNow, pbAtOrigin:b.pb, coverSize, sizeRule: amt===coverSize ? 'cover' : 'fallback',
+                  needAtOrigin:need, duesAtOrigin:needNow, pbAtOrigin:b.pb, coverSize, sizeRule: covering.includes(amt) ? 'cover' : 'fallback',
                   trackCapAtOrigin: ts ? ts.cap : Infinity, ceilingAtOrigin: ceiling };
       allLoans.push(L); b.loans.push(L); l.given.push(L);
       const afterDues = r2(b.pb + amt - needNow);
       const totI = r2(L.sched.reduce((a,x)=>a+x.i,0)), lastPay = r2(L.sched[L.sched.length-1].p+L.sched[L.sched.length-1].i);
       const plan = plural(tenure,'weekly payment')+' of '+rs2(r2(emi))+(Math.abs(lastPay-r2(emi))>EPS?' (last '+rs2(lastPay)+')':'')+', '+rs2(totI)+' interest in all';
       move(b, amt, 'Borrowed '+rs2(amt)+' from '+l.name+' for '+tenure+' weeks at '+rate.toFixed(1)+'%: '+plan+'.'+
-        (amt!==coverSize ? (coverSize===null ? (trackBinds?' Limited to '+rupees0(ts.cap)+' '+trackWhy():' The '+rupees0(C.maxPrincipal)+' borrowing limit allows no more')
+        (!covering.includes(amt) ? (coverSize===null ? (trackBinds?' Limited to '+rupees0(ts.cap)+' '+trackWhy():' The '+rupees0(C.maxPrincipal)+' borrowing limit allows no more')
                                             : ' No lender could fund more')+', so it is '+rs2(need-amt)+' short of what was needed.' : ''), 'loan');
       move(l, -amt, 'Lent '+rs2(amt)+' to '+b.name+' for '+tenure+' weeks at '+rate.toFixed(1)+'%: '+plan+'.', 'loan');
       b.loansTaken++; l.loansGiven++; b.borrowed+=amt; l.lent+=amt;
       made++; madeValue+=amt;
-      placed=true; if(amt!==coverSize) b.borrowOutcome='could only borrow '+rupees0(amt)+', not enough'+(coverSize===null&&trackBinds?' (limited to '+rupees0(ts.cap)+')':''); break;
+      placed=true; if(!covering.includes(amt)) b.borrowOutcome='could only borrow '+rupees0(amt)+', not enough'+(coverSize===null&&trackBinds?' (limited to '+rupees0(ts.cap)+')':''); break;
     }
     if(!placed){
       unfunded++; unfundedValue+=need; b.refused++; b.borrowOutcome='no lender had the money';
@@ -1457,18 +1463,21 @@ function runChecks(S){
       const smaller=C.amounts.filter(a=>a<L.principal);
       if(L.sizeRule==='cover'){
         if(L.pbAtOrigin+L.principal < L.duesAtOrigin-EPS) bad++;
-        if(smaller.some(a=>L.pbAtOrigin+a >= L.duesAtOrigin-EPS)) bad++;
+        if(C.loanPick==='smallest' && smaller.some(a=>L.pbAtOrigin+a >= L.duesAtOrigin-EPS)) bad++;
       } else {
         if(L.pbAtOrigin+L.principal >= L.duesAtOrigin-EPS) bad++;
         if(L.coverSize!==null && L.principal>=L.coverSize) bad++;
       }
-      if(L.pbAtOrigin+L.principal-L.duesAtOrigin > C.lendAbove+EPS && smaller.length && L.sizeRule==='cover'
+      if(!L.handBuilt && C.amounts.indexOf(L.principal)<0) bad++;      /* hand-built test loans can be any size */
+      if(C.loanPick==='smallest' && L.pbAtOrigin+L.principal-L.duesAtOrigin > C.lendAbove+EPS && smaller.length && L.sizeRule==='cover'
          && smaller.some(a=>L.pbAtOrigin+a >= L.duesAtOrigin-EPS)) over++;
     }
     const nCover=loans.filter(L=>L.sizeRule==='cover').length;
-    add('Every loan is the smallest size that covers the need, or \u2014 when nobody could fund that \u2014 a smaller size that does not',
+    add(C.loanPick==='smallest'
+          ? 'Every loan is the smallest size that covers the need, or \u2014 when nobody could fund that \u2014 a smaller size that does not'
+          : 'Every loan is a size that covers the need, or \u2014 when nobody could fund any of those \u2014 a smaller size that does not',
         bad===0, nCover+' covering, '+(loans.length-nCover)+' fallback, '+bad+' wrong');
-    add('Nobody borrows more than they need and ends up with idle money at interest', over===0, over+' oversized loans');
+    if(C.loanPick==='smallest') add('Nobody borrows more than they need and ends up with idle money at interest', over===0, over+' oversized loans');
   }
   /* ---- 4e. every missed instalment says why ---- */
   {
