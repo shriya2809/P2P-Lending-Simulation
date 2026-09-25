@@ -572,7 +572,7 @@ const FORM = [
     {k:'borrowBelow', l:'Must borrow below (\u20B9)', t:'num', min:-1000000, max:0, step:100, h:'At or below this, the person has to borrow.'}
   ]},
   { title:'Loans', fields:[
-    {k:'loanAmounts', l:'Loan sizes available (\u20B9)', t:'text', h:'Comma separated. A borrower takes any one of these at random, provided that once this week\u2019s instalments are paid it leaves them strictly between the two pillow bank thresholds, landing on neither \u2014 no longer forced to borrow, and not straight into lending. When an instalment is due this week they must also end at zero or above, otherwise they could not pay it. If no lender can fund any size that fits, they work down the smaller sizes, largest first.'},
+    {k:'loanAmounts', l:'Loan sizes available (\u20B9)', t:'text', h:'Comma separated. A borrower takes any one of these at random, provided that once this week\u2019s instalments are paid it leaves them strictly between the two pillow bank thresholds, landing on neither \u2014 no longer forced to borrow, and not straight into lending. If no lender can fund any size that fits, they work down the smaller sizes, largest first.'},
     {k:'maxPrincipal', l:'Maximum total borrowing (\u20B9)', t:'num', min:1000, max:1000000, step:1000, h:'Across all open loans together, not per loan.'},
     {k:'tenure1', l:'Loan period \u2014 short (weeks)', t:'num', min:1, max:260, step:1, h:'Archetypes ending in 1 ask for this.'},
     {k:'tenure2', l:'Loan period \u2014 medium (weeks)', t:'num', min:1, max:260, step:1, h:'Archetypes ending in 2 ask for this.'},
@@ -1126,6 +1126,7 @@ function stepWeek(S){
     const refuse = why => { b.borrowOutcome = why; note(b, askTxt+why, {kind:'refused', request:true}); };
     /* an instalment can only be paid if the balance covers it, so when one is due the loan has to
        leave the borrower at zero or above (groups set to "paid regardless" are exempt) */
+    /* whether this week's instalments can still go unpaid after borrowing, for the log note */
     const mustPay = needNow>EPS && C.cat[b.cat].shortfall!=='pay';
     if(b.cr < C.crNoLoan){ blocked++; b.refused++; refuse('the rating of '+n1(b.cr)+' is below the '+C.crNoLoan+' needed to take any loan.'); continue; }
     if(openLoans.length >= maxLoansFor(b.cr,C)){ blocked++; b.refused++; refuse('already holds '+plural(openLoans.length,'loan')+', the most allowed at a rating of '+n1(b.cr)+'.'); continue; }
@@ -1150,9 +1151,9 @@ function stepWeek(S){
     const room2 = C.amounts.filter(a=>a<=room);
     /* THE LANDING WINDOW is strictly inside both pillow bank thresholds: landing exactly on the
        borrowing line still forces a loan, and landing exactly on the lending line forces lending.
-       When an instalment must be paid this week the lower edge is zero instead, since anything
-       below it could not pay. */
-    const atLeast = v => mustPay ? v >= -EPS : v > C.borrowBelow + EPS;
+       A loan that lands inside the window may still leave the borrower short of this week's
+       instalment, which is then missed like any other. */
+    const atLeast = v => v > C.borrowBelow + EPS;
     const below = v => v < C.lendAbove - EPS;
     const covering = room2.filter(a=>atLeast(land(a)) && below(land(a)));
     const helping  = room2.filter(a=>!atLeast(land(a))).sort((x,y)=>y-x)
@@ -1193,12 +1194,12 @@ function stepWeek(S){
       const afterDues = r2(b.pb + amt - needNow);
       const shortWhy = coverSize===null ? (trackBinds ? 'limited to '+rupees0(ts.cap)+' of borrowing '+trackWhy() : 'the '+rupees0(C.maxPrincipal)+' borrowing limit allows no more')
                                         : 'no lender could fund a bigger loan';
-      const shortAfter = (mustPay && afterDues < -EPS) ? ' It does not cover this week\u2019s instalments: '+rs2(needNow)+' due, but the balance after borrowing is '+rs2(r2(b.pb+amt))+'.'
+      const shortAfter = (mustPay && r2(b.pb+amt) < needNow-EPS) ? ' It does not cover this week\u2019s instalments: '+rs2(needNow)+' due, but the balance after borrowing is '+rs2(r2(b.pb+amt))+'.'
                        : (afterDues <= C.borrowBelow+EPS ? ' The pillow bank will still end the week at '+rs2(afterDues)+', so another loan will be needed.' : '');
       const totI = r2(L.sched.reduce((a,x)=>a+x.i,0)), lastPay = r2(L.sched[L.sched.length-1].p+L.sched[L.sched.length-1].i);
       const plan = plural(tenure,'weekly payment')+' of '+rs2(r2(emi))+(Math.abs(lastPay-r2(emi))>EPS?' (last '+rs2(lastPay)+')':'')+', '+rs2(totI)+' interest in all';
       move(b, amt, 'Borrowed '+rs2(amt)+' from '+l.name+' for '+tenure+' weeks at '+rate.toFixed(1)+'%: '+plan+'.'+
-        (!covering.includes(amt) ? ' Smaller than needed: '+shortWhy+'.'+shortAfter : ''), 'loan');
+        (!covering.includes(amt) ? ' Smaller than needed: '+shortWhy+'.'+shortAfter : shortAfter), 'loan');
       move(l, -amt, 'Lent '+rs2(amt)+' to '+b.name+' for '+tenure+' weeks at '+rate.toFixed(1)+'%: '+plan+'.', 'loan');
       b.loansTaken++; l.loansGiven++; b.borrowed+=amt; l.lent+=amt;
       made++; madeValue+=amt;
