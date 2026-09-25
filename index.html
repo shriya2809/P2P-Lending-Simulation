@@ -175,11 +175,6 @@ tbody tr:nth-child(even){background:#F7F9FA}
 .flag{background:#FBF3DF;border-left:5px solid var(--catC);padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0}
 .flag strong{display:block;margin-bottom:.3rem}
 
-.checktable td.det{text-align:left;color:var(--ink-soft);font-size:.85rem}
-.checktable td.nm{text-align:left}
-.checkhead{font-family:Georgia,serif;font-size:1.1rem;font-weight:600;margin:14px 0 0}
-.checkhead.ok{color:var(--good)}
-.checkhead.bad{color:var(--bad)}
 
 @media (max-width:620px){
   :root{--base:16px}
@@ -393,20 +388,8 @@ tbody tr:nth-child(even){background:#F7F9FA}
       </div>
 
       <div class="card">
-        <h2>Integrity checks</h2>
-        <p class="hint" style="margin:0 0 14px">Runs every arithmetic and rule check against the run now on screen: money conservation, weekly reconciliation of each pillow bank, loan balances, interest, ratings, borrowing limits, and whether the event log accounts for every movement. Uses the first repetition, the one the Individuals page shows.</p>
-        <div class="btn-row">
-          <button type="button" class="btn" id="run-checks">Run all checks</button>
-          <button type="button" class="btn-2" id="csv-checks">Export results (CSV)</button>
-        </div>
-        <div id="checks-out"></div>
-      </div>
-
-      <div class="card">
         <div class="btn-row">
           <button type="button" class="btn-2" id="save-scenario">Add this run to the comparison</button>
-          <button type="button" class="btn-2" id="csv-week">Export weekly series (CSV)</button>
-          <button type="button" class="btn-2" id="csv-people">Export participant detail (CSV)</button>
         </div>
       </div>
     </div>
@@ -453,10 +436,6 @@ tbody tr:nth-child(even){background:#F7F9FA}
               <option value="money">Pillow bank movements only</option>
               <option value="loans">Loans and instalments only</option>
             </select>
-          </div>
-          <div class="field">
-            <label for="csv-log">Download</label>
-            <button type="button" class="btn-2" id="csv-log" style="height:48px;padding:0 18px;width:100%">Export this log (CSV)</button>
           </div>
         </div>
         <div class="tablescroll" style="max-height:680px"><table class="logtable" id="t-person-log"></table></div>
@@ -510,9 +489,6 @@ tbody tr:nth-child(even){background:#F7F9FA}
    too, so the log accounts for the whole week. The end-of-week row
    reconciles opening balance + movements = closing.
 
-   INTEGRITY CHECKS. runChecks() re-derives the invariants from the
-   finished run and from the log itself; the Results page runs it on
-   demand.
    ================================================================== */
 
 const CATS = ['A','B','C','D','E'];
@@ -810,7 +786,7 @@ function netSheet(p){
 }
 
 /* ================= the engine ================= */
-const ACC=['penaltyWeek','made','madeValue','blocked','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind','arrearsP','defaultOwed','penaltyCum','netTotal'];
+const ACC=['penaltyWeek','made','madeCB','unfundedCB','madeValue','blocked','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind','arrearsP','defaultOwed','penaltyCum','netTotal'];
 const BYF=['pb','cr','def','lock','ip','ie','la','nb','dout','n'];
 const newBy=()=>{const o={}; BYF.forEach(f=>o[f]=0); return o;};
 
@@ -1133,7 +1109,9 @@ function stepWeek(S){
   }
 
   /* ---- STAGE 3: THE MARKETPLACE ---- */
-  let made=0, madeValue=0, blocked=0, unfunded=0, unfundedValue=0;
+  /* made counts every loan written; madeCB is the rating-building subset, which nobody
+     "requested" in the forced-borrow sense and so is excluded from the request totals */
+  let made=0, madeCB=0, unfundedCB=0, madeValue=0, blocked=0, unfunded=0, unfundedValue=0;
   const borrowers = shuffle(people.filter(p=>p.pb <= C.borrowBelow), rng);
   for(const b of borrowers){
     const needNow = dueTotal(b.id);
@@ -1282,9 +1260,12 @@ function stepWeek(S){
           ' (rating '+n1(b.cr)+', aiming for '+C.cbTarget+'; holds no ordinary loan): '+plan+'.', 'loan');
         move(l, -amt, 'Lent '+rs2(amt)+' to '+b.name+' for '+C.cbTenure+' weeks at '+rate.toFixed(1)+'%: '+plan+'.', 'loan');
         b.loansTaken++; l.loansGiven++; b.borrowed+=amt; l.lent+=amt; b.cbTaken=(b.cbTaken||0)+1;
-        made++; madeValue+=amt; taken++;
+        made++; madeCB++; madeValue+=amt; taken++;
       }
-      if(S.keepDetail && taken<want) note(b,'Wanted '+plural(want-taken,'more '+rupees0(C.cbSize)+' loan')+' to build the rating, but no lender had '+rupees0(C.cbSize)+' to spare.', {kind:'refused'});
+      if(taken<want){
+        unfundedCB += want-taken;
+        note(b,'Wanted '+plural(want-taken,'more '+rupees0(C.cbSize)+' loan')+' to build the rating, but no lender had '+rupees0(C.cbSize)+' to spare.', {kind:'refused'});
+      }
     }
   }
 
@@ -1377,7 +1358,7 @@ function stepWeek(S){
   }
 
   /* ---- STAGE 6: RECORD THE WEEK ---- */
-  const rec={week:w, made, madeValue, blocked, unfunded, unfundedValue,
+  const rec={week:w, made, madeCB, unfundedCB, madeValue, blocked, unfunded, unfundedValue,
              cumPaid:S.cumPaid, cumEarned:S.cumEarned, outstanding:0, behind:0,
              arrearsP:0, defaultOwed:0, penaltyCum:S.penaltyCum, penaltyWeek:penWeekTotal, netTotal:0, by:{}};
   for(const p of people) p.lentArrearsP = 0;
@@ -1456,388 +1437,8 @@ function snapshot(sess){
   return {detail:runs[0], all:runs, weekly, cats:runs[0].cats, runs:n, week:runs[0].week};
 }
 
-/* ==================================================================
-   INTEGRITY CHECKS
-   Re-derives every invariant from the finished run, and from the event
-   log itself, so the log is checked as well as the model. Returns a
-   list of {name, ok, detail}. Pure: changes nothing.
-   ================================================================== */
-function runChecks(S){
-  const C=S.C, out=[], E=0.01;
-  const add=(name,ok,detail)=>out.push({name, ok:!!ok, detail:detail||''});
-  const people=S.people, loans=S.allLoans, W=S.week;
-  const sum=(a,f)=>a.reduce((s,x)=>s+f(x),0);
-
-  /* ---- 1. money ---- */
-  const pbSum=sum(people,p=>p.pb);
-  add('Money is conserved: every pillow bank together equals every surplus ever drawn',
-      Math.abs(pbSum-S.surplusTotal)<E,
-      'pillow banks '+rs2(pbSum)+' vs surpluses drawn '+rs2(S.surplusTotal));
-
-  const surpSeries=sum(people,p=>p.surplusSeries.reduce((s,x)=>s+x,0));
-  add('The recorded weekly incomes, less every sudden expense, add up to the same total',
-      Math.abs(surpSeries-S.shockTotal-S.surplusTotal)<E, rs2(surpSeries)+' \u2212 '+rs2(S.shockTotal)+' vs '+rs2(S.surplusTotal));
-  {
-    let shockRows=0, shockSum=0;
-    for(const p of people) for(const e of p.log) if(e.kind==='shock'){ shockRows++; shockSum-=e.amt; }
-    const perWeek=Math.min(people.length, C.shocks.reduce((a,r)=>a+Math.round(r.pct/100*people.length),0));
-    add('Every sudden expense is logged, and the right number of people are hit each week',
-        Math.abs(shockSum-S.shockTotal)<E && shockRows===perWeek*W,
-        shockRows.toLocaleString('en-IN')+' expenses totalling '+rs2(shockSum)+', expected '+(perWeek*W).toLocaleString('en-IN'));
-  }
-
-  /* ---- 2. the log reconciles, week by week, person by person ---- */
-  let recBad=0, recSeen=0, rowBad=0, rowSeen=0, startRows=0, endRows=0, flagged=0;
-  for(const p of people){
-    let open=null, flow=0, weeksSeen=0;
-    for(const e of p.log){
-      if(e.kind==='start'){ open=e.bal; flow=0; startRows++; weeksSeen++; }
-      if(e.amt!==undefined){
-        rowSeen++;
-        if(Math.abs(e.before+e.amt-e.bal)>0.005) rowBad++;
-        flow+=e.amt;
-      }
-      if(e.kind==='end'){
-        endRows++; recSeen++;
-        if(e.ok===false) flagged++;
-        if(open===null || Math.abs(open+flow-e.bal)>0.005) recBad++;
-      }
-    }
-  }
-  add('Every money row in the log states a balance that follows from the one before',
-      rowBad===0, rowSeen.toLocaleString('en-IN')+' money rows checked, '+rowBad+' wrong');
-  add('Every person-week in the log reconciles: opening balance + movements = closing balance',
-      recBad===0 && flagged===0, recSeen.toLocaleString('en-IN')+' person-weeks, '+recBad+' out by more than a paisa');
-  add('The log opens and closes every week for every participant',
-      startRows===people.length*W && endRows===people.length*W,
-      startRows+' opening and '+endRows+' closing rows for '+people.length+' people over '+W+' weeks');
-  add('Closing balances in the log match the series the charts are drawn from',
-      people.every(p=>{
-        const ends=p.log.filter(e=>e.kind==='end');
-        return ends.length===p.pbSeries.length && ends.every((e,i)=>Math.abs(e.bal-p.pbSeries[i])<0.005);
-      }), 'compared week by week for all '+people.length+' participants');
-
-  /* ---- 3. the log accounts for every event the counters saw ---- */
-  const cnt=(p,k)=>p.log.filter(e=>e.kind===k).length;
-  add('Every instalment paid appears in the log',
-      people.every(p=>cnt(p,'paid')===p.paid),
-      sum(people,p=>p.paid).toLocaleString('en-IN')+' instalments paid');
-  add('Every instalment missed appears in the log',
-      people.every(p=>cnt(p,'missed')===p.missed),
-      sum(people,p=>p.missed).toLocaleString('en-IN')+' instalments missed');
-  add('Every loan taken and every loan given appears in the log',
-      people.every(p=>cnt(p,'loan')===p.loansTaken+p.loansGiven),
-      loans.length.toLocaleString('en-IN')+' loans, logged on both sides');
-  add('Every refused borrowing request appears in the log',
-      people.every(p=>p.log.filter(e=>e.kind==='refused'&&e.request).length===p.refused),
-      sum(people,p=>p.refused).toLocaleString('en-IN')+' requests refused');
-  add('Every week carries exactly one rating decision, with its reason, for every participant',
-      people.every(p=>p.crSeries.length===W && p.log.filter(e=>e.rd).length===W),
-      'one rating decision a week, loan by loan');
-
-  /* ---- 4. loan arithmetic ---- */
-  let bad=[];
-  for(const L of loans){
-    const paidP=L.paidP||0;
-    if(Math.abs(L.principal-(paidP+L.outstanding))>E) bad.push('principal '+L.id);
-    if(L.outstanding<-E) bad.push('negative balance '+L.id);
-    if(L.arrP>L.outstanding+E) bad.push('arrears above balance '+L.id);
-    if(L.schedLeft<0) bad.push('over-scheduled '+L.id);
-    if((L.paidN||0)+(L.missN||0)!==L.tenure-L.schedLeft) bad.push('instalment count '+L.id);
-    if(!L.open && (L.outstanding>EPS || L.arrP+L.arrI>EPS)) bad.push('closed but owing '+L.id);
-    const schedP=L.sched.reduce((s,x)=>s+x.p,0);
-    if(Math.abs(schedP-L.principal)>E) bad.push('schedule '+L.id);
-  }
-  add('Every loan balances: principal = principal repaid + principal outstanding',
-      bad.length===0, loans.length.toLocaleString('en-IN')+' loans checked'+(bad.length?': '+bad.slice(0,5).join(', '):''));
-  add('Every repayment schedule repays exactly the principal advanced, no more and no less',
-      !bad.some(x=>x.indexOf('schedule')===0), 'checked against each loan\u2019s own rate and tenure');
-
-  /* ---- 4b. paying down a default, in steps ---- */
-  {
-    const steps=[...new Set(C.clearTiers.map(t=>t.frac).concat([1]))].filter(f=>f>0&&f<=1);
-    let offStep=0, beforeDues=0, neg=0, rows=0;
-    const hit={};
-    for(const p of people){
-      const missedWk=new Set(p.log.filter(e=>e.kind==='missed').map(e=>e.w));
-      for(const e of p.log){
-        if(e.kind!=='arrears' || e.amt===undefined) continue;
-        rows++;
-        if(!e.defFull && !steps.some(f=>Math.abs(ceil2(f*e.defBase)-e.defPaid)<EPS)) offStep++;
-        const k=e.defFull?'full':Math.round(e.defStep*100)+'%'; hit[k]=(hit[k]||0)+1;
-        if(missedWk.has(e.w)) beforeDues++;
-      }
-    }
-    for(const L of loans) if(L.arrP<-0.005 || L.arrI<-0.005) neg++;
-    add('Every payment toward a default lands exactly on a step ('+steps.map(f=>Math.round(f*100)+'%').sort((a,b)=>parseInt(a)-parseInt(b)).join(', ')+') or clears it',
-        offStep===0, rows.toLocaleString('en-IN')+' payments \u2014 '+Object.keys(hit).sort().map(k=>k+' '+hit[k]).join(', ')+(offStep?'; '+offStep+' off-step':''));
-    add('Nobody pays toward a default in a week they left an instalment unpaid', beforeDues===0, beforeDues+' breaches');
-    add('No loan is ever paid down past zero arrears', neg===0, neg+' loans with negative arrears');
-  }
-
-  /* ---- 4c. money is exact to the paisa ---- */
-  {
-    const whole = x => x===undefined || Math.abs(x*100-Math.round(x*100))<1e-6;
-    let off=0, n=0;
-    for(const p of people) for(const e of p.log){ if(e.amt!==undefined){ n++; if(!whole(e.amt)||!whole(e.before)||!whole(e.bal)) off++; } }
-    for(const L of loans) for(const x of L.sched) if(!whole(x.p)||!whole(x.i)) off++;
-    add('Every amount in the log and every scheduled instalment is in whole paise, so it can be added up by hand',
-        off===0, n.toLocaleString('en-IN')+' money rows, '+off+' not in whole paise');
-  }
-  /* ---- 4d. loan size follows the rule ---- */
-  {
-    let bad=0, over=0;
-    for(const L of loans){
-      if(L.sizeRule==='credit') continue;
-      const lands = a => L.pbAtOrigin+a-L.duesAtOrigin;
-      const mustPay = L.duesAtOrigin>EPS && C.cat[S.idx[L.bId].cat].shortfall!=='pay';
-      const fitsWin = a => (mustPay ? lands(a) >= -EPS : lands(a) > C.borrowBelow+EPS) && lands(a) < C.lendAbove-EPS;
-      if(L.sizeRule==='cover'){
-        if(!fitsWin(L.principal)) bad++;
-      } else {
-        if(fitsWin(L.principal)) bad++;
-        if(L.coverSize!==null && L.principal>=L.coverSize && lands(L.principal)<C.lendAbove-EPS) bad++;
-      }
-      if(!L.handBuilt && C.amounts.indexOf(L.principal)<0) bad++;      /* hand-built test loans can be any size */
-      if(L.sizeRule==='cover' && L.pbAtOrigin+L.principal-L.duesAtOrigin >= C.lendAbove-EPS) over++;
-    }
-    const nCover=loans.filter(L=>L.sizeRule==='cover').length;
-    const nCB=loans.filter(L=>L.sizeRule==='credit').length;
-    add('Every loan lands the borrower strictly inside the window (above the borrowing line and below the lending line, and at zero or above when an instalment is due) or \u2014 when nobody could fund such a size \u2014 outside it',
-        bad===0, nCover+' landing inside, '+(loans.length-nCover-nCB)+' fallback, '+bad+' wrong');
-    /* loans taken only to build the rating */
-    let cbBad=0;
-    for(const L of loans.filter(x=>x.sizeRule==='credit')){
-      if(!C.cbOn) cbBad++;
-      if(L.principal!==C.cbSize || L.tenure!==C.cbTenure) cbBad++;
-      if(!(L.crAtOrigin<C.cbTarget) || !(L.nbAtOrigin>C.cbNetAbove)) cbBad++;
-      if(L.ordinaryAtOrigin!==0) cbBad++;                                /* held no ordinary loan */
-      const ptsPerLoan=C.cbTenure*C.crPaidClean;
-      const most=Math.min(ptsPerLoan>0 ? Math.ceil((C.cbTarget-L.crAtOrigin)/ptsPerLoan) : 0, maxLoansFor(L.crAtOrigin,C));
-      if(L.heldAtOrigin+1 > most) cbBad++;                               /* no more than the points needed */
-      if(L.heldAtOrigin+1 > maxLoansFor(L.crAtOrigin,C)) cbBad++;        /* within the slots the rating allows */
-    }
-    add('Rating-building loans are only taken by people holding no ordinary loan, never more than the points needed, and never beyond the slots their rating allows',
-        cbBad===0, nCB.toLocaleString('en-IN')+' such loans, '+cbBad+' wrong');
-    add('No loan leaves a borrower at or above the lending threshold', over===0, over+' loans over');
-  }
-  /* ---- 4e. every missed instalment says why ---- */
-  {
-    let miss=0, noCause=0;
-    for(const p of people) for(const e of p.log) if(e.kind==='missed'){ miss++; if(!e.cause) noCause++; }
-    add('Every missed instalment states its cause', noCause===0, miss.toLocaleString('en-IN')+' misses, '+noCause+' without a cause');
-  }
-
-  {
-    const a=people.reduce((s,p)=>s+p.penCharged,0), b=people.reduce((s,p)=>s+p.penAccrued,0), c=loans.reduce((s,L)=>s+(L.penTotal||0),0);
-    add('Default interest charged to borrowers equals default interest owed to lenders, loan by loan', Math.abs(a-b)<E && Math.abs(a-c)<E,
-        rs2(a)+' charged, '+rs2(b)+' owed to lenders');
-  }
-
-  {
-    let n=0, bad=0;
-    for(const p of people) for(const e of p.log) if(e.kind==='penalty' && e.side==='borrower'){ n++; if(e.spellStart===undefined || e.w-e.spellStart!==e.spellWeeks) bad++; }
-    add('Every default\u2019s \u201Cin default since week X (N weeks)\u201D agrees with itself', bad===0, n.toLocaleString('en-IN')+' default-interest rows, '+bad+' inconsistent');
-  }
-
-  {
-    let bad=0, wkBad=0;
-    for(const L of loans){
-      const unpaid=L.arrPen||0;
-      if(unpaid<-EPS || unpaid>L.arrI+EPS) bad++;
-      if(Math.abs((L.penTotal||0)-((L.penPaid||0)+unpaid))>EPS) bad++;
-    }
-    S.weekly.forEach((rec,i)=>{
-      let bs=0, ls=0;
-      for(const p of people) for(const e of p.log) if(e.w===i+1 && e.kind==='penalty' && e.pen!==undefined){ if(e.side==='borrower') bs+=e.pen; else ls+=e.pen; }
-      if(Math.abs(bs-rec.penaltyWeek)>EPS || Math.abs(ls-rec.penaltyWeek)>EPS) wkBad++;
-    });
-    add('On every loan, default interest charged = default interest paid + default interest still unpaid', bad===0, bad+' loans out');
-    add('Each week\u2019s default interest in the log matches the weekly total, on the borrower side and the lender side', wkBad===0, S.weekly.length+' weeks, '+wkBad+' out');
-  }
-
-  /* ---- 4f. replay every default, week by week, from the log alone ---- */
-  {
-    let loanWeeks=0; const bad=[];
-    const flag=(L,w,why)=>{ if(bad.length<8) bad.push('loan '+L.id+' wk '+w+': '+why); else bad.push(''); };
-    for(const L of loans){
-      const b=S.idx[L.bId], l=S.idx[L.lId];
-      const mine=b.log.filter(e=>e.loanId===L.id), theirs=l.log.filter(e=>e.loanId===L.id && e.kind==='penalty' && e.side==='lender');
-      if(!mine.length) continue;
-      const first=Math.min(...mine.map(e=>e.w));
-      let prevEnd=null, prevAge=0, prevReset=true;
-      for(let w=first; w<=S.week; w++){
-        const rw=mine.filter(e=>e.w===w);
-        const pen=rw.find(e=>e.kind==='penalty' && e.side==='borrower');
-        const pays=rw.filter(e=>e.kind==='arrears' && e.amt!==undefined).reduce((a,e)=>a-e.amt,0);
-        const miss=rw.filter(e=>e.kind==='missed').reduce((a,e)=>a+e.missAmt,0);
-        const book=rw.find(e=>e.kind==='book');
-        const reset=rw.some(e=>e.kind==='penalty' && e.reset);
-        const start = prevEnd===null ? (pen ? pen.owed : 0) : prevEnd;
-        const end = book ? book.arr : 0;
-        loanWeeks++;
-        if(start>EPS && !pen) flag(L,w,'in default but no default interest charged');
-        if(start<=EPS && pen) flag(L,w,'default interest charged with nothing in default');
-        if(pen){
-          if(Math.abs(pen.owed-start)>EPS) flag(L,w,'charged on '+pen.owed+' but '+start+' was owed');
-          if(Math.abs(pen.pen-r2(start*pen.rate/100))>EPS) flag(L,w,'charge '+pen.pen+' is not '+pen.rate+'% of '+start);
-          const stepped=C.defRate+C.defStep*Math.floor((pen.defAge-1)/C.defEvery), wantRate=C.defCap>0?Math.min(stepped,C.defCap):stepped;
-          if(Math.abs(pen.rate-wantRate)>1e-9) flag(L,w,'rate '+pen.rate+'% in clock week '+pen.defAge+', expected '+wantRate+'%');
-          const wantAge = prevReset ? 1 : prevAge+1;
-          if(pen.defAge!==wantAge) flag(L,w,'clock week '+pen.defAge+', expected '+wantAge);
-          const lp=theirs.find(e=>e.w===w);
-          if(!lp || Math.abs(lp.pen-pen.pen)>EPS) flag(L,w,'lender side shows a different charge');
-        }
-        const charged = pen ? pen.pen : 0, def0 = start>EPS ? r2(start+charged) : 0;
-        if(Math.abs(end-(start+charged-pays+miss))>EPS) flag(L,w,'start '+start+' + charge '+charged+' \u2212 paid '+pays+' + missed '+miss+' \u2260 end '+end);
-        const wantReset = def0>EPS && pays >= C.defReset/100*def0-1e-6 && end>EPS;
-        if(reset!==wantReset) flag(L,w,'clock reset '+reset+', expected '+wantReset);
-        prevReset = reset || end<=EPS; prevAge = pen ? pen.defAge : 0; prevEnd = end;
-        if(!book) break;                        /* loan closed this week */
-      }
-    }
-    add('Every default replays week by week from the log: charge = rate \u00D7 amount owed, rate matches the clock, clock advances or resets as the rules say, and start + charge \u2212 paid + missed = end',
-        bad.length===0, loanWeeks.toLocaleString('en-IN')+' loan-weeks replayed'+(bad.length?'; '+bad.filter(Boolean).join('; '):''));
-  }
-
-  {
-    let n=0, bad=0;
-    for(const p of people){
-      for(const st of p.log.filter(e=>e.kind==='start' && e.w>1)){
-        const prev=p.log.filter(e=>e.w===st.w-1 && e.kind==='book');
-        const owe=r2(prev.filter(e=>e.side==='borrower').reduce((a,e)=>a+e.full,0));
-        const due=r2(prev.filter(e=>e.side==='lender').reduce((a,e)=>a+e.full,0));
-        n++; if(Math.abs(owe-st.owe)>EPS || Math.abs(due-st.owedToYou)>EPS) bad++;
-      }
-    }
-    add('What each week opens owing, and being owed, equals last week\u2019s closing loan book', bad===0, n.toLocaleString('en-IN')+' person-weeks, '+bad+' out');
-  }
-
-  /* ---- 4g. track record ---- */
-  {
-    /* on-time weeks, rebuilt from the log: an instalment paid and none missed */
-    let otBad=0;
-    for(const p of people){
-      const paidW=new Set(p.log.filter(e=>e.kind==='paid').map(e=>e.w)), missW=new Set(p.log.filter(e=>e.kind==='missed').map(e=>e.w));
-      const want=[...paidW].filter(x=>!missW.has(x)).sort((a,b)=>a-b);
-      if(want.join()!==p.onTimeWeeks.join()) otBad++;
-    }
-    add('On-time weeks are exactly the weeks with an instalment paid and none missed', otBad===0, otBad+' participants out');
-    /* default records agree with the loans and with the default status */
-    let recBad=0;
-    for(const p of people){ const o=p.spellRecs.filter(r=>r.cleared===null).length; if(o!==(p.inDefault?1:0)) recBad++; }
-    add('Every spell in default is recorded from the week it starts to the week it ends', recBad===0, recBad+' out');
-    if(C.track.length){
-      /* the limit in force when each loan was written, worked out independently from the history */
-      const capAt=(p,w)=>{
-        const recs=p.spellRecs;
-        for(const row of C.track){
-          let blocked=false, from=0;
-          for(const r of recs){
-            if(r.start>=w) continue;
-            if(r.cleared===null || r.cleared>w){ if(w-r.start>row.y) blocked=true; }
-            else if(r.cleared-r.start>row.y) from=Math.max(from,r.cleared);
-          }
-          let n=0; for(const x of p.onTimeWeeks) if(x<w && x>from) n++;
-          if(blocked || n<row.x) return row.amt;
-        }
-        return Infinity;
-      };
-      let capBad=0, overBad=0;
-      for(const L of loans){
-        const cap=capAt(S.idx[L.bId], L.week);
-        if(cap!==L.trackCapAtOrigin) capBad++;
-        if(L.exposureAtOrigin+L.principal > Math.min(cap, C.maxPrincipal)+EPS) overBad++;
-      }
-      add('The track-record limit on every loan matches the borrower\u2019s history at the time', capBad===0, loans.length+' loans, '+capBad+' out');
-      add('No loan took a borrower over their track-record limit', overBad===0, overBad+' loans over');
-    }
-  }
-
-  /* ---- 5. loans sit in both parties' books ---- */
-  const linked=loans.every(L=>S.idx[L.bId].loans.indexOf(L)>=0 && S.idx[L.lId].given.indexOf(L)>=0 && L.bId!==L.lId);
-  add('Every loan is on the borrower\u2019s book and the lender\u2019s book, and nobody lends to themselves', linked,
-      loans.length.toLocaleString('en-IN')+' loans');
-
-  /* ---- 6. interest ---- */
-  const ip=sum(people,p=>p.interestPaid), ie=sum(people,p=>p.interestEarned);
-  add('Interest paid equals interest earned: no rupee appears or disappears in between',
-      Math.abs(ip-ie)<E && Math.abs(ip-S.cumPaid)<E, rs2(ip)+' paid, '+rs2(ie)+' earned');
-
-  /* ---- 7. ratings ---- */
-  add('No rating ever leaves the range set in the parameters',
-      people.every(p=>p.crSeries.every(v=>v>=C.crFloor-1e-9 && v<=C.crCap+1e-9)),
-      'between '+C.crFloor+' and '+C.crCap);
-
-  let rdBad=0, rdSeen=0, ptsBad=0;
-  const allowed=new Set([C.crPaidClean,-C.crMissClean,C.crPaidDef,-C.crMissDef,-C.crIdleDef].concat(C.clearTiers.map(t=>t.pts)));
-  for(const p of people){
-    p.log.filter(e=>e.rd).forEach((e,i)=>{
-      rdSeen++;
-      if(e.pts.some(x=>!allowed.has(x))) ptsBad++;
-      const tot=e.pts.reduce((a,x)=>a+x,0);
-      const want=Math.round((e.pts.length?(C.crBasis==='avg'?tot/e.pts.length:tot):0)*1000)/1000;
-      const from=i===0?C.crStart:p.crSeries[i-1], to=p.crSeries[i];
-      const landed=Math.max(C.crFloor,Math.min(C.crCap,from+want));
-      if(Math.abs(want-e.d)>1e-9 || Math.abs(e.crFrom-from)>1e-9 || Math.abs(landed-to)>1e-9) rdBad++;
-    });
-  }
-  add('Every loan\u2019s points come straight from the rating table', ptsBad===0, ptsBad+' person-weeks with an unknown score');
-  add('Every rating move is the '+(C.crBasis==='avg'?'average':'sum')+' of its loans\u2019 points, changed only by the floor and ceiling',
-      rdBad===0, rdSeen.toLocaleString('en-IN')+' person-weeks recomputed, '+rdBad+' wrong');
-
-  /* ---- 8. the rules that gate borrowing were respected when each loan was written ---- */
-  const capBad=loans.filter(L=>L.heldAtOrigin>=L.capAtOrigin || L.crAtOrigin<C.crNoLoan);
-  add('No loan was written to anyone already at their loan limit or below the exclusion rating',
-      capBad.length===0, capBad.length+' breaches');
-  const ceilBad=loans.filter(L=>L.exposureAtOrigin+L.principal>C.maxPrincipal+E);
-  add('No borrowing ever crossed the total borrowing ceiling',
-      ceilBad.length===0, 'ceiling '+rupees0(C.maxPrincipal)+', '+ceilBad.length+' breaches');
-  const riskBad=loans.filter(L=>!S.idx[L.lId].riskTaker && L.crAtOrigin<C.riskyBelow);
-  add('No cautious lender funded a borrower rated below the risky threshold',
-      riskBad.length===0, 'threshold '+C.riskyBelow+', '+riskBad.length+' breaches');
-
-  /* ---- 9. lenders never lend money they do not hold ---- */
-  let lendNeg=0;
-  for(const p of people) for(const e of p.log) if(e.kind==='loan' && e.amt<0 && e.bal<-0.005) lendNeg++;
-  add('No lender ever went into the red to fund a loan', lendNeg===0, lendNeg+' rows below zero after lending');
-
-  /* ---- 10. the Net Balance ties back to the money in the system ---- */
-  const defAll=sum(loans.filter(L=>L.open),L=>L.arrP+L.arrI);
-  const nbSum=sum(people,p=>p.nb);
-  add('Net Balances across everyone equal the money held, less everything sitting in default',
-      Math.abs(nbSum-(pbSum-defAll))<0.5, rs2(nbSum)+' vs '+rs2(pbSum-defAll));
-
-  /* ---- 11. default interest obeys its own rules ---- */
-  let rateBad=false;
-  for(let age=1; age<=Math.max(52,W); age++){
-    const r=defRateFor(age,C);
-    const expect=C.defRate+C.defStep*Math.floor((age-1)/C.defEvery);
-    const want=C.defCap>0?Math.min(expect,C.defCap):expect;
-    if(Math.abs(r-want)>1e-9) rateBad=true;
-  }
-  add('Default interest steps up on schedule and respects its ceiling', !rateBad,
-      C.defRate+'% a week, +'+C.defStep+'% every '+C.defEvery+' weeks'+(C.defCap>0?', capped at '+C.defCap+'%':', uncapped'));
-  add('Default interest was only ever charged on loans actually in arrears',
-      loans.every(L=>!(L.penTotal>0) || L.missN>0), 'checked on all '+loans.length.toLocaleString('en-IN')+' loans');
-
-  /* ---- 12. the rate a borrower is offered follows the rating bands ---- */
-  const irBad=loans.filter(L=>Math.abs(L.rate-irFor(L.crAtOrigin,C))>1e-9);
-  add('Every loan was written at the rate its borrower\u2019s rating called for', irBad.length===0,
-      C.irBase+'% at a rating of '+C.irRefCR+', +'+C.irStep+'% every '+C.irBand+' points below');
-
-  /* ---- 13. arrears reported to the charts match the loan book ---- */
-  const laSum=sum(people,p=>p.lentArrearsP);
-  const arrP=sum(loans.filter(L=>L.open&&L.arrP>0),L=>L.arrP);
-  add('Lent principal in arrears, totalled across lenders, matches the loan book',
-      Math.abs(laSum-arrP)<E, rs2(laSum)+' vs '+rs2(arrP));
-
-  const okAll=out.every(x=>x.ok);
-  return {checks:out, passed:out.filter(x=>x.ok).length, total:out.length, ok:okAll};
-}
-
 if(typeof module!=='undefined' && module.exports){
-  module.exports={DEFAULTS, structured, newSession, advance, snapshot, runChecks,
+  module.exports={DEFAULTS, structured, newSession, advance, snapshot,
                   irFor, maxLoansFor, defRateFor, buildSchedule, nearestTenure, netSheet, CATS};
 }
 /* ==================================================================
@@ -2215,7 +1816,8 @@ function stepBy(total){
   }
   if(!SESS) setup();
   const CHUNK=4, sub=$('wksub'), buttons=document.querySelectorAll('[data-step]');
-  if(total<=CHUNK){ busy(()=>{ advance(SESS, total); LAST=snapshot(SESS); render(); if(sub) sub.textContent=''; }); return; }
+  /* render() writes the run description into #wksub, so nothing clears it afterwards */
+  if(total<=CHUNK){ busy(()=>{ advance(SESS, total); LAST=snapshot(SESS); render(); }); return; }
   STEPPING=true; buttons.forEach(x=>x.disabled=true);
   let done=0;
   (function tick(){
@@ -2223,7 +1825,7 @@ function stepBy(total){
     advance(SESS, n); done+=n;
     if(sub) sub.textContent='Working\u2026 '+done+' of '+total+' weeks';
     if(done<total){ setTimeout(tick, 0); }
-    else { LAST=snapshot(SESS); render(); if(sub) sub.textContent=''; STEPPING=false; buttons.forEach(x=>x.disabled=false); }
+    else { LAST=snapshot(SESS); render(); STEPPING=false; buttons.forEach(x=>x.disabled=false); }
   })();
 }
 $('restart').onclick=()=>{ if(STEPPING) return; if(SESS) setup(SESS.seed); else setup(); render(); };
@@ -2319,13 +1921,17 @@ function drawSurplus(id, labels, surplus, shock){
 }
 
 /* ---------- averaging across repetitions ----------
-   Everything except the Individuals page and the integrity checks is the mean of all
+   Everything except the Individuals page is the mean of all
    repetitions: totals are summed over every repetition's people and divided by the
    number of repetitions. */
 const NR = () => LAST.runs;
 const pooledPeople = () => LAST.all.flatMap(S=>S.people);
 const perRun = x => x / NR();
 const shown = v => (typeof v==='number' && !Number.isInteger(v)) ? (Math.round(v*10)/10).toLocaleString('en-IN') : v;
+/* counts and percentages are means once repetitions are averaged, so they keep a decimal
+   rather than being rounded to a whole number that hides the averaging */
+const count = v => NR()>1 ? shown(Math.round(v*10)/10) : Math.round(v).toLocaleString('en-IN');
+const pct = v => (NR()>1 ? v.toFixed(1) : v.toFixed(0))+'%';
 
 /* ---------- results ---------- */
 function render(){
@@ -2333,8 +1939,9 @@ function render(){
   $('results-body').style.display='block';
   const atZero = LAST.week===0;
   $('wknow').textContent = 'Week '+LAST.week;
-  $('wksub').textContent = atZero ? 'nothing has happened yet'
-    : (LAST.runs>1 ? 'averaged over '+LAST.runs+' repeats of the same settings' : 'a single run');
+  $('wksub').textContent = (atZero ? 'nothing has happened yet \u2014 ' : '')+
+    (LAST.runs>1 ? 'averaged over '+LAST.runs+' repetitions of the same settings'
+                 : 'a single run, not averaged');
   drawLive(atZero);
   $('week0').style.display = atZero?'block':'none';
   $('headline').style.display = atZero?'none':'';
@@ -2342,7 +1949,6 @@ function render(){
   document.querySelectorAll('#results-body > .card').forEach(c=>c.style.display = atZero?'none':'');
   $('people-empty').style.display = atZero?'block':'none';
   $('people-body').style.display = atZero?'none':'block';
-  $('checks-out').innerHTML='';
   if(atZero) return;
 
   const W=LAST.weekly, C=LASTC, cats=LAST.cats, last=W[W.length-1];
@@ -2353,19 +1959,27 @@ function render(){
   const pool=pooledPeople();
   const lockedOut=perRun(pool.filter(p=>p.cr<C.crNoLoan).length);
   const owedBelow=perRun(pool.filter(p=>p.cr<C.crNoLoan).reduce((a,p)=>a+owedFull(p.loans).tot,0));
-  const askedTotal=W.reduce((s,r)=>s+r.made+r.unfunded+r.blocked,0);
+  /* a "request" is a forced borrowing attempt: it was funded, refused by a rule, or found
+     no lender. Rating-building loans are not requests, so they are left out. */
+  const madeAll=W.reduce((s,r)=>s+r.made,0), madeCB=W.reduce((s,r)=>s+r.madeCB,0);
+  /* rating-building loans are wanted rather than needed, so they are counted separately:
+     a request here is one small loan a qualifying person tried to take */
+  const unfCB=W.reduce((s,r)=>s+r.unfundedCB,0), askedCB=madeCB+unfCB;
+  const unfCBPct=askedCB?100*unfCB/askedCB:0;
+  const askedTotal=W.reduce((s,r)=>s+(r.made-r.madeCB)+r.unfunded+r.blocked,0);
   const unfundedPct=askedTotal?100*W.reduce((s,r)=>s+r.unfunded,0)/askedTotal:0;
   const blockedPct=askedTotal?100*W.reduce((s,r)=>s+r.blocked,0)/askedTotal:0;
   const stats=[
-    ['Interest', rupees0(last.cumPaid)],
-    ['Loans originated', Math.round(W.reduce((s,r)=>s+r.made,0)).toLocaleString('en-IN')],
-    ['In default at horizon', asNumber(last.behind)+' of '+totalPeople],
+    ['Interest paid to date', rupees0(last.cumPaid)],
+    ['Loans made to date', count(madeAll-madeCB)+(madeCB>0.05 ? ' + '+count(madeCB)+' to build ratings' : '')],
+    ['In default now', asNumber(last.behind)+' of '+totalPeople],
     ['Principal outstanding', rupees0(last.outstanding)],
     ['Lent principal in arrears', rupees0(last.arrearsP)],
     ['Owed by people rated below '+C.crNoLoan+' ('+asNumber(lockedOut)+' people)', rupees0(owedBelow)],
     ['Default owed (incl. default interest)', rupees0(last.defaultOwed)],
-    ['Requests with no lender', unfundedPct.toFixed(0)+'%'],
-    ['Requests refused by the rules', blockedPct.toFixed(0)+'%']
+    ['Regular loan requests with no lender', count(askedTotal*unfundedPct/100)+' of '+count(askedTotal)+' ('+pct(unfundedPct)+')'],
+    ['Regular loan requests refused by the rules', count(askedTotal*blockedPct/100)+' of '+count(askedTotal)+' ('+pct(blockedPct)+')'],
+    ['Rating-building requests with no lender', askedCB<0.05 ? 'none sought' : count(unfCB)+' of '+count(askedCB)+' ('+pct(unfCBPct)+')']
   ];
   $('headline').innerHTML=stats.map(s=>'<div class="stat"><span class="k">'+s[0]+'</span><span class="v">'+s[1]+'</span></div>').join('');
 
@@ -2375,27 +1989,19 @@ function render(){
   bits.push('At week '+LAST.week+', group <strong>'+endPB[0][0]+'</strong> holds the highest mean balance at '+rupees0(endPB[0][1])+' and group <strong>'+endPB[endPB.length-1][0]+'</strong> the lowest at '+rupees0(endPB[endPB.length-1][1])+'.');
   bits.push('Mean credit rating is highest in group <strong>'+endCR[0][0]+'</strong> at '+endCR[0][1].toFixed(0)+' and lowest in group <strong>'+endCR[endCR.length-1][0]+'</strong> at '+endCR[endCR.length-1][1].toFixed(0)+'.');
   bits.push(asNumber(last.behind)+' of '+totalPeople+' participants are in default, and '+asNumber(lockedOut)+' sit below '+C.crNoLoan+' and are excluded from new borrowing.');
-  const frozen=perRun(pool.filter(p=>p.loans.filter(L=>L.open).length > maxLoansFor(p.cr,C)).length);
-  if(frozen>=0.05) bits.push(asNumber(frozen)+' participants hold more loans than their current rating permits. Nothing is called in; they are simply unable to borrow again until enough loans run off.');
   const endNB=cats.map(k=>[k,catAvg(last,k,'nb')]).sort((a,b)=>b[1]-a[1]);
   bits.push('Net Balance: group <strong>'+endNB[0][0]+'</strong> is best off at a mean of '+rupees0(endNB[0][1])+
     ', group <strong>'+endNB[endNB.length-1][0]+'</strong> worst at '+rupees0(endNB[endNB.length-1][1])+
     '. '+asNumber(perRun(pool.filter(p=>p.nb<0).length))+' of '+totalPeople+' participants owe more than they hold and are owed.');
   if(last.defaultOwed>0.5) bits.push(rupees0(last.defaultOwed)+' is sitting in default, of which default interest built up to date is '+rupees0(last.penaltyCum)+
-    ' (charged, not necessarily collected). Across everyone, Net Balances add up to '+rupees0(last.netTotal)+
-    ': every rupee of net income drawn, less the default that borrowers owe but lenders do not count.');
-  bits.push('Cumulative interest is '+rupees0(last.cumPaid)+', roughly '+rupees0(last.cumPaid/totalPeople)+' per participant.');
+    '. Across everyone, Net Balances add up to '+rupees0(last.netTotal)+'.');
+  bits.push('Borrowers have paid '+rupees0(last.cumPaid)+' in interest, about '+rupees0(last.cumPaid/totalPeople)+' per participant.');
   if(last.arrearsP>0) bits.push(rupees0(last.arrearsP)+' of lent principal is in arrears'+
     (last.cumEarned>0 ? ', '+asNumber(last.arrearsP/last.cumEarned)+' times the interest lenders have earned' : '')+
 '.');
-  bits.push('Of every borrowing request made, '+blockedPct.toFixed(0)+'% were refused by the rules before reaching a lender \u2014 rating too low, loan limit reached, or already at the borrowing ceiling \u2014 and a further '+unfundedPct.toFixed(0)+'% reached the market but found no lender with funds to spare. Anyone excluded keeps asking every week they are short, so a high figure reflects repeat requests from the same people.');
-  const expShock=C.shocks.reduce((s,r)=>s+r.pct/100*r.amt,0);
-  const sinking=cats.filter(k=>(C.cat[k].min+C.cat[k].max)/2 - expShock < -100);
-  if(sinking.length) bits.push('Group'+(sinking.length>1?'s ':' ')+sinking.join(', ')+' hold'+(sinking.length>1?'':'s')+' a negative expected weekly surplus (after an average sudden expense of '+rupees0(expShock)+' a week) before any lending occurs, so '+(sinking.length>1?'their':'its')+' decline is a property of the population rather than of the credit rules.');
+  if(askedCB>0.05) bits.push('Separately, '+count(askedCB)+' rating-building loans were sought by people who qualified for them; '+count(unfCB)+' ('+pct(unfCBPct)+') found no lender with '+rupees0(C.cbSize)+' to spare.');
+  bits.push(count(madeAll)+' loans were made in all, of which '+count(madeCB)+' were taken only to build a rating rather than in answer to a request. There were '+count(askedTotal)+' regular borrowing requests, counting only people forced to borrow because their pillow bank fell to '+rupees0(C.borrowBelow)+' or below. Of those, '+pct(blockedPct)+' were refused by the rules before reaching a lender \u2014 rating too low, loan limit reached, or already at the borrowing ceiling \u2014 and a further '+pct(unfundedPct)+' were eligible and reached the market but found no single lender with enough to spare.');
   if(C.irPeriod==='year' && last.cumPaid < totalPeople*200) bits.push('Interest is small because the quoted rate is read per annum against tenures of a few weeks. The monthly and single-charge readings are available under Interest.');
-  bits.push(LAST.runs>1
-    ? 'Every figure on this page is the mean of '+LAST.runs+' repetitions advancing together. Only the Individuals page and the integrity checks show the first repetition.'
-    : 'Single repetition. Ten or twenty repetitions give a steadier read on the parameters.');
   $('story').innerHTML='<h2>Summary</h2><ul><li>'+bits.join('</li><li>')+'</li></ul>';
 
   const pf=$('person-filter');
@@ -2418,9 +2024,11 @@ function render(){
   renderOwed();
   $('owed-by').onchange = renderOwed;
   draw('c-loans', labels, [
-    {label:'Loans originated', data:W.map(r=>r.made), borderColor:'#2E6FA7', backgroundColor:'#2E6FA7'},
-    {label:'Unfunded \u2014 no counterparty', data:W.map(r=>r.unfunded), borderColor:'#D4691E', backgroundColor:'#D4691E'},
-    {label:'Declined by rating band', data:W.map(r=>r.blocked), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[7,5]}
+    {label:'Loans made on request', data:W.map(r=>r.made-r.madeCB), borderColor:'#2E6FA7', backgroundColor:'#2E6FA7'},
+    {label:'Loans taken to build a rating', data:W.map(r=>r.madeCB), borderColor:'#157F4B', backgroundColor:'#157F4B', borderDash:[4,4]},
+    {label:'Regular requests \u2014 no lender', data:W.map(r=>r.unfunded), borderColor:'#D4691E', backgroundColor:'#D4691E'},
+    {label:'Regular requests \u2014 refused by the rules', data:W.map(r=>r.blocked), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[7,5]},
+    {label:'Rating-building \u2014 no lender', data:W.map(r=>r.unfundedCB), borderColor:'#B07E00', backgroundColor:'#B07E00', borderDash:[3,3]}
   ], 'Requests per week', asNumber);
 
   buildPeople();
@@ -2430,17 +2038,13 @@ function drawLive(atZero){
   const W=LAST.weekly, now=atZero?null:W[W.length-1];
   const people=LAST.detail.people.length;
   const running=atZero?0:shown(perRun(LAST.all.reduce((s,S)=>s+S.allLoans.filter(L=>L.open).length,0)));
+  /* this strip is THIS WEEK only; the cumulative figures live in the results headline below */
   const cells = atZero
-    ? [['Participants',people],['Loans outstanding',0],['In default',0],['Interest to date','\u20B90']]
-    : [['Originations this week', asNumber(now.made)],
-       ['Loans outstanding', running],
-       ['In default', asNumber(now.behind)+' of '+people],
-       ['Principal outstanding', rupees0(now.outstanding)],
-       ['Interest to date', rupees0(now.cumPaid)],
-       ['Lent principal in arrears', rupees0(now.arrearsP)],
-       ['Default owed (incl. default interest)', rupees0(now.defaultOwed)],
-       ['Default interest charged this week', rs2(now.penaltyWeek)],
-       ['Requests declined this week', asNumber(now.unfunded+now.blocked)]];
+    ? [['Participants',people],['Loans outstanding',0],['Loans made this week',0],['Requests declined this week',0]]
+    : [['Loans outstanding', running],
+       ['Loans made this week', asNumber(now.made-now.madeCB)+(now.madeCB>0.05 ? ' + '+asNumber(now.madeCB)+' to build ratings' : '')],
+       ['Requests declined this week', asNumber(now.unfunded+now.blocked)],
+       ['Default interest charged this week', rs2(now.penaltyWeek)]];
   $('runlive').innerHTML = cells.map(c=>'<div class="stat"><span class="k">'+c[0]+'</span><span class="v">'+c[1]+'</span></div>').join('');
 }
 
@@ -2747,36 +2351,6 @@ function renderLog(){
   if(!html.length) html.push('<tr><td></td><td></td><td class="ev">Nothing matches this filter.</td><td></td><td></td></tr>');
   $('t-person-log').innerHTML='<thead><tr><th style="width:60px">Week</th><th style="text-align:left;width:120px">Type</th><th style="text-align:left">Event</th><th style="width:120px">Change</th><th style="width:140px">Pillow bank after</th></tr></thead><tbody>'+html.join('')+'</tbody>';
 }
-$('csv-log').onclick=()=>{
-  const p=CURRENT_PERSON; if(!p) return;
-  const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
-  const head=['week','type','event','change','pillow_bank_before','pillow_bank_after'];
-  const rows=logRows(p).map(e=>[e.w, (KIND[e.kind]||KIND.info)[0], q(e.txt),
-    e.amt!==undefined?e.amt.toFixed(2):'', e.before!==undefined?e.before.toFixed(2):'', e.bal!==undefined?e.bal.toFixed(2):'']);
-  download('p2p-log-'+p.name+'.csv',[head.join(',')].concat(rows.map(r=>r.join(','))).join('\n'));
-};
-
-/* ---------- integrity checks ---------- */
-let CHECKS=null;
-$('run-checks').onclick=()=>{
-  if(!SESS){ $('checks-out').innerHTML='<p class="hint">Advance the simulation first \u2014 there is nothing to check at week 0.</p>'; return; }
-  const r=runChecks(SESS.runs[0]);
-  CHECKS=r;
-  const head='<p class="checkhead '+(r.ok?'ok':'bad')+'">'+
-    (r.ok? 'All '+r.total+' checks pass at week '+SESS.runs[0].week+'.'
-         : (r.total-r.passed)+' of '+r.total+' checks failed at week '+SESS.runs[0].week+'.')+'</p>';
-  const rows=r.checks.map(c=>'<tr><td class="nm">'+c.name+'</td><td><span class="tag '+(c.ok?'reg':'def')+'">'+
-    (c.ok?'Pass':'Fail')+'</span></td><td class="det">'+c.detail+'</td></tr>').join('');
-  $('checks-out').innerHTML=head+'<div class="tablescroll" style="margin-top:10px"><table class="checktable">'+
-    '<thead><tr><th style="text-align:left">Check</th><th style="width:90px">Result</th><th style="text-align:left">Detail</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-};
-$('csv-checks').onclick=()=>{
-  if(!CHECKS){ $('checks-out').innerHTML='<p class="hint">Run the checks first, then export them.</p>'; return; }
-  const q=s=>'"'+String(s).replace(/"/g,'""')+'"';
-  const rows=CHECKS.checks.map(c=>[q(c.name), c.ok?'pass':'fail', q(c.detail)].join(','));
-  download('p2p-checks.csv',['check,result,detail'].concat(rows).join('\n'));
-};
-
 /* ---------- status at the horizon ---------- */
 let statusSort={key:null, dir:1};
 function renderStatus(){
@@ -2888,7 +2462,7 @@ function drawCompare(){
   const t=$('t-compare');
   if(!scenarios.length){ t.innerHTML='<tbody><tr><td style="text-align:left;padding:30px">No runs added yet. Use <strong>Add this run to the comparison</strong> at the foot of the Results page.</td></tr></tbody>'; return; }
   const cats=CATS;
-  const heads=['Settings','Added','Weeks','Repetitions','Paid (clean / default)','Missed (clean / default)','Interest','Originated','Requests refused','In default','Interest paid','Lent principal in arrears'].concat(cats.map(k=>'PB '+k)).concat(cats.map(k=>'Rating '+k));
+  const heads=['Settings','Added','Weeks','Repetitions','Paid (clean / default)','Missed (clean / default)','Interest','Loans made (all)','Requests refused','In default','Interest paid','Lent principal in arrears'].concat(cats.map(k=>'PB '+k)).concat(cats.map(k=>'Rating '+k));
   t.innerHTML='<thead><tr>'+heads.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+
     scenarios.map(s=>'<tr>'+[
       (s.name||'\u2014'), s.when, s.weeks, s.runs, s.up, s.down, s.rate,
@@ -2899,42 +2473,6 @@ function drawCompare(){
 (STORE.get('p2psim:scenarios',[])||[]).forEach(x=>scenarios.push(x));
 drawCompare();
 
-/* ---------- downloads ----------
-   On the published page, files go through the viewer's downloads
-   capability (it asks for confirmation). Elsewhere, a plain link. */
-let DL = null;
-try{ if(window.claude && typeof window.claude.use==='function') window.claude.use('downloads').then(d=>{ DL=d; }).catch(()=>{}); }catch(e){}
-async function download(name, text){
-  if(DL){
-    try{ await DL.save({filename:name, data:text}); }
-    catch(err){
-      if(err && (err.code==='declined')) return;
-      if(err && err.code==='rate_limited'){ alert('A save prompt is already open \u2014 try again in a moment.'); return; }
-      alert('The file could not be saved here ('+(err&&err.code||'unavailable')+').');
-    }
-    return;
-  }
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([text],{type:'text/csv'}));
-  a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-}
-$('csv-week').onclick=()=>{
-  const codes=Object.keys(LAST.weekly[LAST.weekly.length-1].by).sort();
-  const head=['week'].concat(codes.map(c=>'pillow_bank_'+c)).concat(codes.map(c=>'credit_rating_'+c))
-    .concat(codes.map(c=>'in_default_'+c)).concat(codes.map(c=>'interest_paid_'+c)).concat(codes.map(c=>'interest_earned_'+c))
-    .concat(codes.map(c=>'net_balance_'+c)).concat(codes.map(c=>'default_owed_'+c)).concat(['default_owed_total','default_interest_this_week','default_interest_cumulative','loans_made','loan_value','requests_unfunded','requests_blocked','interest_paid_cumulative','interest_earned_cumulative','outstanding','lent_principal_in_arrears']);
-  const cell=(r,c,f)=>{const b=r.by[c];return b&&b.n?(f==='def'?b.def:b[f]/b.n).toFixed(2):'';};
-  const rows=LAST.weekly.map(r=>[r.week].concat(codes.map(c=>cell(r,c,'pb'))).concat(codes.map(c=>cell(r,c,'cr')))
-    .concat(codes.map(c=>cell(r,c,'def'))).concat(codes.map(c=>cell(r,c,'ip'))).concat(codes.map(c=>cell(r,c,'ie')))
-    .concat(codes.map(c=>cell(r,c,'nb'))).concat(codes.map(c=>cell(r,c,'dout'))).concat([r.defaultOwed.toFixed(2),r.penaltyWeek.toFixed(2),r.penaltyCum.toFixed(2),r.made.toFixed(2),r.madeValue.toFixed(2),r.unfunded.toFixed(2),r.blocked.toFixed(2),r.cumPaid.toFixed(2),r.cumEarned.toFixed(2),r.outstanding.toFixed(2),r.arrearsP.toFixed(2)]));
-  download('p2p-weeks.csv',[head.join(',')].concat(rows.map(r=>r.join(','))).join('\n'));
-};
-$('csv-people').onclick=()=>{
-  const head=['person','subtype','group','lending_style','wants_weeks','pillow_bank','credit_rating','behind','loans_taken','loans_given','instalments_paid','instalments_missed','weeks_behind','times_refused','interest_paid','interest_earned','lent_principal_in_arrears','default_owed','sudden_expense_total','net_balance'];
-  const rows=LAST.detail.people.map(p=>[p.name,p.code,p.cat,p.riskTaker?'risk-taker':'cautious',p.prefTenure,p.pb.toFixed(2),p.cr.toFixed(2),p.inDefault?'yes':'no',
-    p.loansTaken,p.loansGiven,p.paid,p.missed,p.weeksBehind,p.refused,p.interestPaid.toFixed(2),p.interestEarned.toFixed(2),p.lentArrearsP.toFixed(2),p.defOwed.toFixed(2),(p.shockTotal||0).toFixed(2),p.nb.toFixed(2)]);
-  download('p2p-people.csv',[head.join(',')].concat(rows.map(r=>r.join(','))).join('\n'));
-};
 
 </script>
 </body>
