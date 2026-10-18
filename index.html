@@ -365,7 +365,7 @@ tbody tr:nth-child(even){background:#F7F9FA}
 
       <div class="card">
         <h2>Net owed per participant</h2>
-        <p class="hint" style="margin:0 0 10px">Principal still owed on loans taken &minus; principal still owed to them on loans given (written-off loans no longer count as owed to them). Above zero they are net borrowers, below zero net lenders. Anyone rated below the net-owed rating with net owed above the limit may hold only the set number of loans.</p>
+        <p class="hint" style="margin:0 0 10px">Principal still owed on loans taken &minus; principal still owed to them on loans given (written-off loans no longer count as owed to them). Above zero they are net borrowers, below zero net lenders. Someone in default and rated below the net-owed rating can take a new loan only if their net owed is below the line (dashed), and only a limited number until they are out of default.</p>
         <div id="panel-no"></div>
       </div>
 
@@ -568,7 +568,7 @@ const DEFAULTS = {
   crNoLoan: 50,
 
   /* --- net owed: loans taken minus loans given (outstanding principal) --- */
-  noCR: 70, noAbove: 1000, noMax: 1,
+  noCR: 70, noBelow: -1000, noMax: 1,
 
   /* --- write-off: a borrower in default this many weeks running is written off --- */
   woWeeks: 4, woBar: 'repaid',
@@ -622,10 +622,10 @@ const FORM = [
     {k:'cbTarget', l:'\u2026 and the rating is below', t:'num', min:0, max:1000, step:1, h:'They stop once they reach this rating, and start again if they fall back below it. They may fill every loan slot their rating allows, so even someone just above the exclusion rating can work their way back up. Below the exclusion rating, where no loan is otherwise allowed at all, exactly one such loan is permitted, so that a low rating is not a trap with no way out. The same conditions still apply: no ordinary loan, no arrears, and a Net Balance above the figure above. Only risk-taking lenders will fund them.'}
   ]},
   { title:'Borrowing limit until a track record is built (optional)', table:'track', note:'Caps how much a person may have outstanding until they have shown they repay. Each row: the most they may owe, until they have this many weeks of on-time repayment (a week with an instalment due and none missed), with no more than this many weeks in default at a time (from falling into default until fully out of it). Rows are passed in order; once every row is passed only the maximum total borrowing above applies. A longer spell in default holds them on that row until they are out of default, and their on-time weeks start counting again from then. Leave the table empty to switch this off.' },
-  { title:'Net owed', note:'Net owed is the principal a person still owes on loans they have taken minus the principal still owed to them on loans they have given (written-off loans do not count as owed to them). Someone with a low rating who is a net borrower may hold only a limited number of loans. Like the bands below, this gates new borrowing only.', fields:[
-    {k:'noCR', l:'Applies when the rating is below', t:'num', min:-1000, max:1000, step:1, h:'Default 70.'},
-    {k:'noAbove', l:'\u2026 and net owed is above (\u20B9)', t:'num', min:-1000000, max:1000000, step:500, h:'Default \u20B91,000.'},
-    {k:'noMax', l:'\u2026 then at most this many loans at once', t:'num', min:0, max:20, step:1, h:'Default 1. The tighter of this and the rating band applies.'}
+  { title:'Net owed', note:'Net owed is the principal a person still owes on loans they have taken minus the principal still owed to them on loans they have given (written-off loans do not count as owed to them). Below zero they have lent out more than they have borrowed. Someone who is in default and rated below the line set here may take a new loan only if they have lent out more than they have borrowed by the amount set here, and then only a limited number of loans until they are out of default. Like the bands below, this gates new borrowing only; loans already running are untouched.', fields:[
+    {k:'noCR', l:'Applies while in default and the rating is below', t:'num', min:-1000, max:1000, step:1, h:'Default 70.'},
+    {k:'noBelow', l:'\u2026 a new loan needs net owed below (\u20B9)', t:'num', min:-1000000, max:1000000, step:500, h:'Default \u2212\u20B91,000: they must have lent out at least \u20B91,000 more than they have borrowed.'},
+    {k:'noMax', l:'\u2026 and at most this many new loans until out of default', t:'num', min:0, max:20, step:1, h:'Default 1. Counted from the week they fell into default; resets once they are out of default.'}
   ]},
   { title:'Write-off', note:'When a borrower has been in default for this many weeks in a row, every loan of theirs still in default is written off by its lender: it no longer counts toward the lender\u2019s Net Balance. The borrower still owes it, default interest still runs, and anything they repay later still reaches the lender as a recovery. A written-off borrower gets no fresh loans.', fields:[
     {k:'woWeeks', l:'Write off after this many weeks in default in a row', t:'num', min:0, max:260, step:1, h:'0 switches write-offs off.'},
@@ -764,11 +764,19 @@ function netOwedOf(p){
   return r2(s);
 }
 /* loans a person may hold at once: the rating band, tightened by the net-owed rule */
-function netOwedBinds(p,C){ return p.cr < C.noCR && netOwedOf(p) > C.noAbove; }
-function capFor(p,C){
-  const m = maxLoansFor(p.cr,C);
-  return netOwedBinds(p,C) ? Math.min(m, C.noMax) : m;
+/* NET-OWED RULE: while in default and rated below noCR, a new loan is allowed only if net owed
+   is below noBelow (they have lent out more than they have borrowed by that much), and only noMax
+   new loans per spell in default. Returns null if the rule does not block, else the reason. */
+function netOwedBlock(p,C){
+  if(p.cr >= C.noCR) return null;
+  let owe=0; for(const L of p.loans) if(L.open) owe+=L.arrP+L.arrI;
+  if(owe <= 0.005) return null;
+  if(netOwedOf(p) >= C.noBelow) return 'net';
+  if((p.spellLoans||0) >= C.noMax) return 'used';
+  return null;
 }
+function netOwedBinds(p,C){ return !!netOwedBlock(p,C); }
+function capFor(p,C){ return maxLoansFor(p.cr,C); }
 /* barred from fresh loans because a lender has written them off */
 function woBarred(p,C){
   return C.woBar==='forever' ? !!p.woEver : p.loans.some(L=>L.open && L.writtenOff);
@@ -889,7 +897,7 @@ function createRun(C, seed, keepDetail){
         pbSeries:[], crSeries:[], ipSeries:[], ieSeries:[], defSeries:[], lockSeries:[], log:[],
         surplusSeries:[], shockSeries:[], prePbSeries:[], openSeries:[], laSeries:[], lentArrearsP:0, woPUnpaid:0, wopSeries:[], wolSeries:[],
         nbSeries:[], doutSeries:[], biasSeries:[],
-        onTimeWeeks:[], spellRecs:[], trackCap:(C.track.length?C.track[0].amt:Infinity),
+        onTimeWeeks:[], spellRecs:[], spellLoans:0, trackCap:(C.track.length?C.track[0].amt:Infinity),
         saves:[], saveWeek:0, savedTotal:0, saveSeries:[], netOwed:0, noSeries:[],
         defStreak:0, woEver:false, woLost:0, woRecovered:0, woOwed:0, woSeries:[]
       };
@@ -1252,7 +1260,12 @@ function stepWeek(S){
     if(woBarred(b,C)){ blocked++; blockedWO++; b.refused++; refuse('a lender has written them off after '+plural(C.woWeeks,'week')+' in default in a row, so nobody gives them a fresh loan'+(C.woBar==='forever'?'.':' until the written-off debt is repaid.')); continue; }
     if(b.cr < C.crNoLoan){ blocked++; blockedCR++; b.refused++; refuse('the rating of '+n1(b.cr)+' is below the '+C.crNoLoan+' needed to take any loan.'); continue; }
     if(openLoans.length >= maxLoansFor(b.cr,C)){ blocked++; blockedCap++; b.refused++; refuse('already holds '+plural(openLoans.length,'loan')+', the most allowed at a rating of '+n1(b.cr)+'.'); continue; }
-    if(openLoans.length >= capFor(b,C)){ blocked++; blockedNO++; b.refused++; refuse('rated '+n1(b.cr)+' (below '+C.noCR+') with net owed of '+rs2(netOwedOf(b))+' (above '+rupees0(C.noAbove)+'), so may hold only '+plural(C.noMax,'loan')+' and already holds '+openLoans.length+'.'); continue; }
+    { const why = netOwedBlock(b,C);
+      if(why){ blocked++; blockedNO++; b.refused++;
+        refuse(why==='net'
+          ? 'in default and rated '+n1(b.cr)+' (below '+C.noCR+'), so a new loan needs net owed below '+rupees0(C.noBelow)+' (lent out more than borrowed); net owed is '+rs2(netOwedOf(b))+'.'
+          : 'in default and rated '+n1(b.cr)+' (below '+C.noCR+'), and has already taken '+plural(b.spellLoans,'loan')+' since falling into default, the most allowed.');
+        continue; } }
     const ts = trackStatus(b, w, C);
     const trackBinds = !!ts && ts.cap < C.maxPrincipal;
     const ceiling = trackBinds ? ts.cap : C.maxPrincipal;
@@ -1328,7 +1341,7 @@ function stepWeek(S){
                   crAtOrigin:b.cr, capAtOrigin:maxLoansFor(b.cr,C), heldAtOrigin:openLoans.length,
                   exposureAtOrigin:openLoans.reduce((s,x)=>s+x.outstanding,0),
                   needAtOrigin:need, duesAtOrigin:needNow, pbAtOrigin:b.pb, coverSize, sizeRule: covering.includes(amt) ? 'cover' : 'fallback',
-                  trackCapAtOrigin: ts ? ts.cap : Infinity, ceilingAtOrigin: ceiling, noAtOrigin: netOwedOf(b) };
+                  trackCapAtOrigin: ts ? ts.cap : Infinity, ceilingAtOrigin: ceiling, noAtOrigin: netOwedOf(b), defAtOrigin: arrearsOf(b)>EPS, spellLoansAtOrigin: b.spellLoans||0 };
       allLoans.push(L); b.loans.push(L); l.given.push(L);
       const afterDues = r2(b.pb + amt - needNow);
       const shortWhy = coverSize===null ? (trackBinds ? 'limited to '+rupees0(ts.cap)+' of borrowing '+trackWhy() : 'the '+rupees0(C.maxPrincipal)+' borrowing limit allows no more')
@@ -1341,6 +1354,7 @@ function stepWeek(S){
         (!covering.includes(amt) ? ' Smaller than needed: '+shortWhy+'.'+shortAfter : shortAfter), 'loan');
       move(l, -amt, 'Lent '+rs2(amt)+' to '+b.name+' for '+tenure+' weeks at '+rate.toFixed(1)+'%: '+plan+'.', 'loan');
       b.loansTaken++; l.loansGiven++; b.borrowed+=amt; l.lent+=amt;
+      if(arrearsOf(b) > EPS) b.spellLoans = (b.spellLoans||0)+1;
       made++; madeValue+=amt;
       placed=true; if(!covering.includes(amt)) b.borrowOutcome='borrowed '+rupees0(amt)+', but that was less than needed ('+shortWhy+').'+shortAfter; break;
     }
@@ -1379,7 +1393,7 @@ function stepWeek(S){
          screen (no ordinary loan, no arrears, Net Balance above the bar), so someone
          who has already cleared their defaults and is solvent has a slow way back.
          Only risk-taking lenders will fund them, and they are never forced to. */
-      const cbCap = b.cr < C.crNoLoan ? Math.min(1, netOwedBinds(b,C)?C.noMax:1) : capFor(b,C);
+      const cbCap = b.cr < C.crNoLoan ? 1 : capFor(b,C);
       const wantTotal = Math.min(ptsPerLoan>0 ? Math.ceil((C.cbTarget-b.cr)/ptsPerLoan) : 0, cbCap);
       const want = wantTotal - held;
       if(want<=0) continue;
@@ -1403,7 +1417,7 @@ function stepWeek(S){
                     heldAtOrigin:b.loans.filter(L2=>L2.open).length, exposureAtOrigin:b.loans.filter(L2=>L2.open).reduce((x,L2)=>x+L2.outstanding,0),
                     needAtOrigin:0, duesAtOrigin:0, pbAtOrigin:b.pb, coverSize:null, sizeRule:'credit',
                     creditBuild:true, nbAtOrigin:nb0, wantAtOrigin:wantTotal, ordinaryAtOrigin:0,
-                    trackCapAtOrigin: ts ? ts.cap : Infinity, ceilingAtOrigin: ceiling, noAtOrigin: netOwedOf(b) };
+                    trackCapAtOrigin: ts ? ts.cap : Infinity, ceilingAtOrigin: ceiling, noAtOrigin: netOwedOf(b), defAtOrigin: arrearsOf(b)>EPS, spellLoansAtOrigin: b.spellLoans||0 };
         allLoans.push(L); b.loans.push(L); l.given.push(L);
         const totI = r2(L.sched.reduce((x,y)=>x+y.i,0)), lastPay = r2(L.sched[L.sched.length-1].p+L.sched[L.sched.length-1].i);
         const plan = plural(C.cbTenure,'weekly payment')+' of '+rs2(r2(emi))+(Math.abs(lastPay-r2(emi))>EPS?' (last '+rs2(lastPay)+')':'')+', '+rs2(totI)+' interest in all';
@@ -1522,6 +1536,7 @@ function stepWeek(S){
       }
     }
     p.inDefault = nowDef;
+    if(!nowDef) p.spellLoans = 0;
     if(nowDef){ p.weeksBehind++; if(!wasDef) note(p,'Now in default: at least one instalment is unpaid.',{kind:'status'}); }
     else if(wasDef) note(p,'Out of default: every missed instalment and all default interest has been paid.',{kind:'status'});
   }
@@ -2278,7 +2293,7 @@ function render(){
       ['\u2026 written off', count(reasonTot('blockedWO')), asNumber(last.blockedWO)+' this week. '+asNumber(last.barred)+' people are barred from fresh loans right now.'],
       ['\u2026 rating below '+C.crNoLoan, count(reasonTot('blockedCR')), asNumber(last.blockedCR)+' this week. No loan at all at this rating.'],
       ['\u2026 loan limit reached', count(reasonTot('blockedCap')), asNumber(last.blockedCap)+' this week. Already hold the most loans their rating allows.'],
-      ['\u2026 net-owed rule', count(reasonTot('blockedNO')), asNumber(last.blockedNO)+' this week. Rated below '+C.noCR+' with net owed above '+rupees0(C.noAbove)+', so limited to '+plural(C.noMax,'loan')+'.'],
+      ['\u2026 net-owed rule', count(reasonTot('blockedNO')), asNumber(last.blockedNO)+' this week. In default and rated below '+C.noCR+', without having lent out '+rupees0(-C.noBelow)+' more than they borrowed (or already used their '+plural(C.noMax,'loan')+').'],
       ['\u2026 borrowing ceiling', count(reasonTot('blockedCeil')), asNumber(last.blockedCeil)+' this week. No room under the '+rupees0(C.maxPrincipal)+' limit on total borrowing.'],
       ['Waited \u2014 no loan would help', count(waitedTot), asNumber(last.waited)+' this week. The only loan they could get would not have let them pay another instalment.']
     ]],
@@ -2314,7 +2329,7 @@ function render(){
   if(last.writtenOffLoans>0.05) bits.push('Lenders have written off '+count(last.writtenOffLoans)+' loans worth '+rupees0(last.writtenOff)+' after their borrowers spent '+plural(C.woWeeks,'week')+' in default in a row; '+asNumber(last.barred)+' people are barred from fresh loans now.');
   if(last.savedCum>0.5) bits.push('After sudden expenses, people have rebuilt '+rupees0(last.savedCum)+' by cutting back.');
   { const nob=perRun(pool.filter(p=>p.netOwed>0).length);
-    bits.push(asNumber(nob)+' of '+totalPeople+' participants are net borrowers (net owed above zero); '+asNumber(perRun(pool.filter(p=>p.cr<C.noCR && p.netOwed>C.noAbove).length))+' are rated below '+C.noCR+' with net owed above '+rupees0(C.noAbove)+', so may hold only '+plural(C.noMax,'loan')+'.'); }
+    bits.push(asNumber(nob)+' of '+totalPeople+' participants are net borrowers (net owed above zero); '+asNumber(perRun(pool.filter(p=>p.cr<C.noCR && p.inDefault).length))+' are in default and rated below '+C.noCR+', so they can take a new loan only once they have lent out '+rupees0(-C.noBelow)+' more than they have borrowed.'); }
   if(C.irPeriod==='year' && last.cumPaid < totalPeople*200) bits.push('Interest is small because the quoted rate is read per annum against tenures of a few weeks. The monthly and single-charge readings are available under Interest.');
   $('story').innerHTML='<h2>Summary</h2><ul><li>'+bits.join('</li><li>')+'</li></ul>';
 
@@ -2590,7 +2605,7 @@ function drawPerson(id){
     ['Net Balance', rupees0(p.nb)],
     ['Credit rating', asNumber(p.cr)],
     ['Rate on a new loan', irFor(p.cr,C).toFixed(1)+'%'],
-    ['Loans allowed now', capFor(p,C)+(netOwedBinds(p,C)?' (net-owed rule)':'')],
+    ['Loans allowed now', netOwedBinds(p,C) ? 'No new loans (net-owed rule)' : capFor(p,C)],
     ['Net owed', rupees0(p.netOwed)],
     ['Default owed (incl. default interest)', rupees0(p.defOwed)],
     ['Effort bias this week', p.biasAmt?'+'+rupees0(p.biasAmt):'None'],
@@ -2615,7 +2630,7 @@ function drawPerson(id){
 
   draw('c-person-no', labels, faint('no').concat([
     {label:p.name+' \u2014 net owed', data:p.noSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5},
-    {label:'Net-owed limit', data:labels.map(()=>C.noAbove), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[6,4], borderWidth:2}
+    {label:'Net-owed line', data:labels.map(()=>C.noBelow), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[6,4], borderWidth:2}
   ]), 'Net owed (\u20B9)', asRupees, null, {legend:false});
 
   draw('c-person-pre', labels, faint('prePb').concat([
