@@ -327,6 +327,18 @@ tbody tr:nth-child(even){background:#F7F9FA}
 
 
       <div class="card">
+        <h2>Long-term assets</h2>
+        <p class="hint" style="margin:0 0 10px">Mean long-term assets per participant at the end of each week: everything put away once the pillow bank went above the line, plus the interest it has earned, less anything withdrawn to avoid exit.</p>
+        <div id="panel-lta"></div>
+      </div>
+
+      <div class="card">
+        <h2>Interest earned on long-term assets</h2>
+        <p class="hint" style="margin:0 0 10px">Running total, mean per participant: the interest long-term assets have earned since week 1. It stays in long-term assets.</p>
+        <div id="panel-ltaint"></div>
+      </div>
+
+      <div class="card">
         <h2>Credit rating</h2>
                 <div id="panel-cr"></div>
       </div>
@@ -494,6 +506,8 @@ tbody tr:nth-child(even){background:#F7F9FA}
         <div class="chartbox" style="height:320px"><canvas id="c-person-pre"></canvas></div>
         <h3 style="margin-top:26px">Pillow Bank at End of Week</h3>
         <div class="chartbox" style="height:320px"><canvas id="c-person"></canvas></div>
+        <h3 style="margin-top:26px">Long-term assets <span style="font-weight:400;font-size:.9rem;color:var(--ink-soft)">(balance, what was put in, and the interest it has earned)</span></h3>
+        <div class="chartbox" style="height:320px"><canvas id="c-person-lta"></canvas></div>
         <h3 style="margin-top:26px">Credit Rating</h3>
         <div class="chartbox" style="height:320px"><canvas id="c-person-cr"></canvas></div>
         <h3 style="margin-top:26px">Net owed <span style="font-weight:400;font-size:.9rem;color:var(--ink-soft)">(principal on loans taken &minus; principal on loans given)</span></h3>
@@ -559,12 +573,18 @@ tbody tr:nth-child(even){background:#F7F9FA}
         of the week, paid or missed, share of its default cleared); the
         loans' points are summed or averaged into one rating move;
         default-interest clocks reset; a borrower in default for N weeks
-        running has borrowing paused (no new loans) until everything overdue is paid
+        running has borrowing paused (no new loans) until everything overdue is paid;
+        (someone who would reach N weeks in default this week has already, in stage 2,
+        paid this week's instalments and everything overdue from their cash and
+        long-term assets, if the two together covered it; otherwise long-term assets
+        are untouched. A rating exit and an exit balance never touch them)
+     5b anyone above 4000 puts the difference into long-term assets, back to 1000
      6  the week's figures recorded for the charts
 
-   MONEY IS CONSERVED. At any point, the sum of all pillow banks equals
-   the sum of the starting balances plus every surplus ever drawn
-   (net of sudden expenses, plus saving after them).
+   MONEY IS CONSERVED. At any point, the sum of all pillow banks plus all
+   long-term assets equals the sum of the starting balances plus every surplus
+   ever drawn (net of sudden expenses, plus saving after them) plus the
+   interest long-term assets have earned.
 
    AUDIT LOG: every change to a pillow bank goes through move(), which
    records the amount, the balance before and the balance after. Every
@@ -592,14 +612,15 @@ const DEFAULTS = {
 
   /* --- effort bias: extra weekly net income once the rating falls below a tier --- */
   biasWhen:'always',
-  /* --- extra effort and saving after a sudden expense both pause once the pillow bank reaches this (0 = never) --- */
-  pausePb: 3000,
+  /* --- LONG-TERM ASSETS: at the end of the week, a pillow bank above ltaAbove is brought back down to
+         ltaTo and the difference put into long-term assets earning ltaRate% a year (0 = off) --- */
+  ltaAbove: 4000, ltaTo: 1000, ltaRate: 13,
 
   /* --- CSR reserve: pays the lender loan amount / weeks for every missed instalment, repaid first.
          It has no set size: the simulation measures how much it would have needed. --- */
   resOn:'yes',
-  /* --- NEW MEMBERS: off by default; when on, one cohort joins every joinEvery weeks --- */
-  joinOn:'no', joinEvery: 4, joinPer: 1,
+  /* --- NEW MEMBERS: off by default; when on, every exit is replaced by one new member the next week --- */
+  joinOn:'yes',
   bias1CR:90, A_bias1:600,  B_bias1:400,  C_bias1:0,   D_bias1:300,  E_bias1:0,
   bias2CR:80, A_bias2:800,  B_bias2:600,  C_bias2:300, D_bias2:500,  E_bias2:0,
   bias3CR:70, A_bias3:1000, B_bias3:800,  C_bias3:450, D_bias3:700,  E_bias3:0,  
@@ -642,8 +663,10 @@ const DEFAULTS = {
   crBasis: 'sum',
 
   /* --- rating movement (points, judged once per person per week) --- */
-  /* a week not in default and owing nothing: crIdleUp points, or more for a bigger pillow bank (one amount, not added together) */
-  crIdleUp: 0.5, pbUp1At: 2000, pbUp1: 1, pbUp2At: 4000, pbUp2: 2,
+  /* a full week not in default and owing nothing: crIdleUp points, plus crLentUp for every whole
+     crLentPer rupees of net lent (principal still owed to them, exited borrowers included, less
+     principal they owe on open loans) */
+  crIdleUp: 0.5, crLentUp: 0.5, crLentPer: 1000,
   crPaidClean: 1,  crMissClean: 3,
   crPaidDef: 0.5,  crMissDef: 3,  crIdleDef: 1.5,
   clr1: 25,  crClr1: 1,
@@ -665,19 +688,21 @@ const FORM = [
     {k:'runs', l:'Repetitions to average', t:'num', min:1, max:50, step:1, h:'Runs the same settings several times and averages.'},
     {k:'openMin', l:'Starting pillow bank \u2014 lowest (\u20B9)', t:'num', min:-100000, max:100000, step:100, h:'Each person starts with a random whole-rupee balance between these two figures, so there are lenders from week 1. A negative start is money they are already short, owed to nobody in the scheme.'},
     {k:'openMax', l:'Starting pillow bank \u2014 highest (\u20B9)', t:'num', min:-100000, max:100000, step:100, h:'Set both to 0 for the old behaviour, everyone starting empty.'},
-    {k:'joinOn', l:'New members join', t:'select', opts:[['no','Off'],['yes','On']], h:'Off by default. When on, new people join every few weeks: this many from each group (A to E) each time, cycling through each group\u2019s six archetypes so the mix matches the original members. They start as the originals did in week 1. Their names end in j and a number (A11-j3 is the third new A member). With this on, the member charts run by week of membership, so week 1 is everyone\u2019s first week, whenever they joined.'},
-    {k:'joinEvery', l:'A new group of members joins every (weeks)', t:'num', min:1, max:104, step:1, h:'Default 4: the first new group joins in week 5, then weeks 9, 13 and so on.'},
-    {k:'joinPer', l:'New members from each group each time', t:'num', min:1, max:20, step:1, h:'Default 1, so 5 people join each time (one each from A, B, C, D and E).'}
+    {k:'joinOn', l:'Replace people who exit', t:'select', opts:[['no','Off'],['yes','On']], h:'On by default. When on, every time someone exits the scheme a new person joins at the start of the next week to replace them. New people come in a fixed order, A11, B11, C11, D11, E11, A12, B12, C12, D12, E12, A13 and so on through all 30 archetypes, then round again. They start as the originals did in week 1. Their names end in j and their place in that order (B11-j2 is the second person to join). With this on, the member charts run by week of membership, so week 1 is everyone\u2019s first week, whenever they joined.'}
   ]},
   { title:'Group parameters', table:'cats', note:'One row per behaviour group. Min and max bound the random net income each person earns or loses every week. On shortfall decides what happens when the pillow bank cannot cover an instalment. After a sudden expense, a group with a saving percentage rebuilds that share of it by cutting back over the given number of weeks, starting the week after; 0% or 0 weeks means they do not.' },
-  { title:'Effort bias \u2014 extra weekly net income as the rating falls', table:'bias', note:'People cut spending or earn more when their rating slips. Each week the deepest tier the rating sits below applies; when the rating climbs back above a tier, the extra effort drops back with it. Extra effort also pauses while the pillow bank is at or above the pause line set below.' },
+  { title:'Effort bias \u2014 extra weekly net income as the rating falls', table:'bias', note:'People cut spending or earn more when their rating slips. Each week the deepest tier the rating sits below applies; when the rating climbs back above a tier, the extra effort drops back with it.' },
   { title:'Effort bias \u2014 when it applies', fields:[
-    {k:'biasWhen', l:'Bias switches on', t:'select', opts:[['always','Whenever the rating is below a tier'],['default','Only while also in default']], h:'The first follows the rule as written. The second is the older behaviour.'},
-    {k:'pausePb', l:'Extra effort and saving pause once the pillow bank reaches (₹)', t:'num', min:0, max:1000000, step:500, h:'Checked at the start of each week. At or above this, no extra effort is added and saving after a sudden expense waits; both pick up again once the pillow bank falls back below it. Paused saving is not lost, just delayed. Default ₹3,000. 0 switches the pause off.'}
+    {k:'biasWhen', l:'Bias switches on', t:'select', opts:[['always','Whenever the rating is below a tier'],['default','Only while also in default']], h:'The first follows the rule as written. The second is the older behaviour.'}
   ]},
   { title:'Pillow bank thresholds', fields:[
     {k:'lendAbove', l:'Must lend above (\u20B9)', t:'num', min:0, max:1000000, step:100, h:'Above this, the spare cash has to be lent out.'},
     {k:'borrowBelow', l:'With nothing due, must borrow at or below (\u20B9)', t:'num', min:-1000000, max:0, step:100, h:'Anyone with an instalment due this week borrows as soon as paying it would take the pillow bank below \u20B90. Only someone with nothing due waits until the pillow bank is at or below this line.'}
+  ]},
+  { title:'Long-term assets', note:'At the end of every week, anyone whose pillow bank is above the first line below puts the difference into long-term assets, bringing the pillow bank back down to the second line. Long-term assets earn interest every week and are kept separately from the pillow bank: they are not lent out and do not count toward the lending or borrowing lines. They are used for one thing only. In the week someone would reach the exit period in default in a row, straight after the week’s income comes in: if their pillow bank’s cash plus their long-term assets cover that week’s instalments and everything overdue, they pay it all, the cash first and the rest straight from long-term assets to the lenders (a negative pillow bank is left as it is). They are out of default, stay in, and the week earns the rating points for paying and clearing. If the two together do not cover it, long-term assets are not touched and they exit. Long-term assets are never used for an exit because the rating fell below the exit rating, nor toward an exit balance: exit balances are repaid only from the pillow bank, and long-term assets stay theirs, still earning interest. People who have exited do not put money away.', fields:[
+    {k:'ltaAbove', l:'Put money away once the pillow bank is above (₹)', t:'num', min:0, max:1000000, step:500, h:'Default ₹4,000. Checked at the end of each week. 0 switches long-term assets off.'},
+    {k:'ltaTo', l:'… bringing the pillow bank back down to (₹)', t:'num', min:0, max:1000000, step:500, h:'Default ₹1,000. Everything above this goes into long-term assets.'},
+    {k:'ltaRate', l:'Interest on long-term assets (% a year)', t:'num', min:0, max:100, step:0.5, h:'Default 13%. Added every week and compounded, so money left in for a full year grows by exactly this much.'}
   ]},
   { title:'Loans', fields:[
     {k:'loanAmounts', l:'Loan sizes available (\u20B9)', t:'text', h:'Comma separated. A borrower takes any one of these at random that lets them pay all of this week\u2019s instalments, leaving them at \u20B90 or above but below the lending line (with nothing due: above the borrowing line). If no lender can fund any size that fits, a smaller size is written only if it lets them pay at least one more instalment than they could without it; otherwise they take nothing and wait for next week.'},
@@ -709,12 +734,10 @@ const FORM = [
     {k:'riskyBelow', l:'Borrower counts as risky below', t:'num', min:-1000, max:1000, step:1, h:'Cautious lenders refuse anyone under this. Risk-takers lend regardless.'}
   ]},
   { title:'Rating movement', table:'cr', note:'Each loan is scored by how that loan opened the week, in default or not, and what happened to it during the week. The scores of all of a person\u2019s loans are summed to give the week\u2019s rating move.' },
-  { title:'Rating gained without borrowing', note:'The rating rises in any full week someone is not in default and owes nothing at all (no loan to repay, no exit balance) from start to end, by more the bigger their pillow bank. The week they pay off their last loan, or come back from exit, does not count; the gain starts the week after. Lending does not affect the rating. Capped at the highest possible rating.', fields:[
-    {k:'crIdleUp', l:'Each full week not in default and owing nothing (points)', t:'num', min:0, max:100, step:0.25, h:'Default 0.5. For anyone with no loan to repay and no exit balance, whose pillow bank is not above the first line below.'},
-    {k:'pbUp1At', l:'\u2026 or, with a pillow bank above (\u20B9)', t:'num', min:0, max:1000000, step:500, h:'Default \u20B92,000.'},
-    {k:'pbUp1', l:'\u2026 this many points instead', t:'num', min:0, max:100, step:0.25, h:'Default 1.'},
-    {k:'pbUp2At', l:'\u2026 or, with a pillow bank above (\u20B9)', t:'num', min:0, max:1000000, step:500, h:'Default \u20B94,000.'},
-    {k:'pbUp2', l:'\u2026 this many points instead', t:'num', min:0, max:100, step:0.25, h:'Default 2. Only one of the three amounts is added in a week, never more than one.'}
+  { title:'Rating gained without borrowing', note:'The rating rises in any full week someone is not in default and owes nothing at all (no loan to repay, no exit balance) from start to end, plus more for every whole step of net lent. Net lent is the principal still owed to them on loans they have given, including loans whose borrowers have exited (the principal in those exit balances), less the principal they still owe on open loans; only whole steps count, so \u20B92,900 is two steps of \u20B91,000. The week they pay off their last loan, or come back from exit, does not count; the gain starts the week after. Long-term assets do not count. Capped at the highest possible rating.', fields:[
+    {k:'crIdleUp', l:'Each full week not in default and owing nothing (points)', t:'num', min:0, max:100, step:0.25, h:'Default 0.5. For anyone with no loan to repay and no exit balance.'},
+    {k:'crLentUp', l:'\u2026 plus, on top, this many points', t:'num', min:0, max:100, step:0.25, h:'Default 0.5.'},
+    {k:'crLentPer', l:'\u2026 for every whole amount of net lent of (\u20B9)', t:'num', min:1, max:1000000, step:500, h:'Default \u20B91,000. With \u20B93,400 net lent: 0.5 + 3 \u00D7 0.5 = 2 points that week.'}
   ]},
   { title:'Rating bands and loan ceilings', table:'limits', note:'How many loans a person may hold at once, by rating. This gates new borrowing only \u2014 loans already running are never called in, so someone whose rating slips keeps the loans they have and simply cannot take more.' },
   { title:'Default interest', fields:[
@@ -735,7 +758,7 @@ const FORM = [
     {k:'irPeriod', l:'Quoted rate is', t:'select', opts:[['year','per year'],['month','per month'],['term','one charge for the whole loan']], h:'Per year makes interest tiny on a loan of a few weeks. This changes results more than any other setting.'},
     {k:'irMode', l:'Interest charged on', t:'select', opts:[['reducing','balance outstanding'],['flat','original loan amount']], h:'Balance outstanding shrinks as the loan is repaid, so interest falls week by week. Original amount does not.'}
   ]},
-  { title:'CSR reserve', note:'Measures how much CSR money a reserve would need, without changing anything in the simulation: lenders are paid only what borrowers actually pay. The measurement assumes that, whenever a borrower misses an instalment, the reserve would pay the lender the original loan amount divided by the original number of weeks, with no interest and never more than the missed principal it has not already covered; that it would keep paying the rest of the principal on the original schedule after a borrower exits; and that it would be repaid first out of whatever the borrower later pays toward that default or exit balance. Most ever required is the size the reserve would have needed so it never ran dry.', fields:[
+  { title:'CSR reserve', note:'Measures how much CSR money a reserve would need, without changing anything in the simulation: lenders are paid only what borrowers actually pay. The measurement assumes that, whenever a borrower misses an instalment, the reserve would pay the lender the original loan amount divided by the original number of weeks, with no interest and never more than the missed principal it has not already covered; and that it would keep paying on the original schedule after a borrower exits. In all, it never has out on a loan more than the loan amount less everything the borrower has paid on it, interest included: on a ₹2,000 loan where ₹1,200 was paid before the default, it pays at most ₹800, so the lender gets back what they lent. Whatever the borrower later pays toward that default or exit balance goes to the lender’s interest first; the principal then repays the reserve until it has back what it paid, and anything after that goes to the lender. Most ever required is the size the reserve would have needed so it never ran dry.', fields:[
     {k:'resOn', l:'Measure the CSR reserve needed', t:'select', opts:[['yes','On'],['no','Off']], h:'Measurement only: switching it off just hides the CSR reserve cards. Results are the same either way.'}
   ]}
 ];
@@ -784,6 +807,10 @@ function ceil2(x){ return Math.ceil(x*100-1e-7)/100; }
    A repayment plan is traced back to the loan it came from, so a plan never changes the rate. */
 function originalLoan(L){ let o=L; while(o && o.plan && o.planOf) o=o.planOf; return o||L; }
 function coverRate(L){ const o=originalLoan(L); return o.principal/o.tenure; }
+/* THE MOST THE CSR RESERVE MAY HAVE OUT ON A LOAN: the loan amount less everything the borrower has
+   paid on it so far, interest included. A ₹2,000 loan on which ₹1,200 was paid before the default can
+   draw at most ₹800 from the reserve, so the lender gets back the amount lent and no more. */
+function coverCap(L){ return Math.max(0, r2(L.principal - (L.bPaid||0))); }
 function loanTag(L){ return L.plan ? 'the repayment plan from week '+L.week+' (for '+loanTag(L.planOf)+')' : 'the '+rupees0(L.principal)+' loan made in week '+L.week; }
 function plural(n,w){ return n+' '+w+(n===1?'':'s'); }
 
@@ -827,8 +854,8 @@ function structured(raw){
   C.noMax = Math.max(0, Math.round(C.noMax));
   C.resOn = String(raw.resOn)==='yes';
   C.joinOn = String(raw.joinOn)==='yes';
-  C.joinEvery = Math.max(1, Math.round(C.joinEvery)); C.joinPer = Math.max(1, Math.round(C.joinPer));
-  return C;
+  /* long-term assets: a weekly rate that compounds to exactly ltaRate% over 52 weeks */
+  C.ltaWeekly = Math.pow(1 + Math.max(0,C.ltaRate)/100, 1/52) - 1;  return C;
 }
 
 /* Interest on a FRESH loan. Loans already running keep the rate they were written at. */
@@ -874,6 +901,16 @@ function netOwedBlock(p,C){
   return null;
 }
 function netOwedBinds(p,C){ return !!netOwedBlock(p,C); }
+/* NET LENT, for the rating gained without borrowing: principal still owed to them on loans they have
+   given (open loans, plus the principal in exit balances of borrowers who exited owing them) less the
+   principal they still owe on their own open loans. */
+function netLentOf(p, people){
+  let s=0;
+  for(const L of p.given) if(L.open) s+=L.outstanding;
+  for(const q of people) for(const d of (q.exitDebts||[])) if(d.lId===p.id) s+=d.p;
+  for(const L of p.loans) if(L.open) s-=L.outstanding;
+  return r2(s);
+}
 function capFor(p,C){ return maxLoansFor(p.cr,C); }
 /* barred from fresh loans because they have exited the scheme (loans are written off only on exit) */
 function woBarred(p,C){ return !!p.exited; }
@@ -921,7 +958,9 @@ function makePerson(C, pid, k, code, name, sp){
     nbSeries:[], doutSeries:[], biasSeries:[], spellsSeries:[], wkdefSeries:[], avglenSeries:[], exitedSeries:[], exOwedSeries:[],
     onTimeWeeks:[], spellRecs:[], spellLoans:0, trackCap:(C.track.length?C.track[0].amt:Infinity),
     saves:[], saveWeek:0, savedTotal:0, saveSeries:[], netOwed:0, noSeries:[],
-    defStreak:0, woEver:false, woLost:0, woRecovered:0, woOwed:0, woSeries:[]
+    defStreak:0, woEver:false, woLost:0, woRecovered:0, woOwed:0, woSeries:[],
+    /* long-term assets: balance, put in, withdrawn, interest earned, number of withdrawals */
+    lta:0, ltaIn:0, ltaOut:0, ltaInt:0, ltaWd:0, ltaSeries:[], ltaIntSeries:[], ltaNetInSeries:[]
   };
 }
 function makeSubtypes(n){
@@ -998,18 +1037,19 @@ function netSheet(p){
   for(const L of p.given) if(L.open && !L.writtenOff){ recv += Math.max(0,L.outstanding-L.arrP) + remIntSched(L); defDue += L.arrP+L.arrI; }
   for(const L of p.loans) if(L.open){ owe += Math.max(0,L.outstanding-L.arrP) + remIntSched(L) + L.arrP + L.arrI; defOwed += L.arrP+L.arrI; }
   if(p.exitBal>0){ owe += p.exitBal; defOwed += p.exitBal; }   /* an exit balance is owed in full, all of it overdue */
-  return {recv, owe, defOwed, defDue, net:p.pb+recv-owe};
+  return {recv, owe, defOwed, defDue, net:p.pb+(p.lta||0)+recv-owe};   /* long-term assets count as an asset */
 }
 
 /* ================= the engine ================= */
-const ACC=['resExitCover','resPaidWeek','resBackWeek','yieldWeek','resPaid','resBack','resN','yieldCum','resOut','resPeak','resInExit','resInDefault','woPUnpaid','penaltyWeek','made','madeValue','blocked','blockedCR','blockedCap','blockedCeil','blockedNO','blockedWO','waited','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind','arrearsP','defaultOwed','penaltyCum','netTotal','writtenOff','writtenOffP','writtenOffLoans','woWeek','savedWeek','savedCum','barred','exitedN','exitedOwed','exitedEver','exitedP','blockedEX','frozenN','frozenP','cantEX','cantFR','cantCR','cantNO','cantCAP','cantAMT'];
-const BYF=['pb','cr','def','lock','ip','ie','la','wop','nb','dout','no','wol','spells','wkdef','exited','exOwed','n'];
+const ACC=['resExitCover','resPaidWeek','resBackWeek','yieldWeek','resPaid','resBack','resN','yieldCum','resOut','resPeak','resInExit','resInDefault','woPUnpaid','penaltyWeek','made','madeValue','blocked','blockedCR','blockedCap','blockedCeil','blockedNO','blockedWO','waited','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind','arrearsP','defaultOwed','penaltyCum','netTotal','writtenOff','writtenOffP','writtenOffLoans','woWeek','savedWeek','savedCum','barred','exitedN','exitedOwed','exitedEver','exitedP','blockedEX','frozenN','frozenP','cantEX','cantFR','cantCR','cantNO','cantCAP','cantAMT','ltaTotal','ltaIntCum','ltaInCum','ltaOutCum','ltaWdN'];
+const BYF=['pb','cr','def','lock','ip','ie','la','wop','nb','dout','no','wol','spells','wkdef','exited','exOwed','lta','ltaInt','n'];
 const newBy=()=>{const o={}; BYF.forEach(f=>o[f]=0); return o;};
 
 function createRun(C, seed, keepDetail){
   const S = { C, rng:trueRandom(), people:[], idx:{}, allLoans:[], weekly:[],
               cumPaid:0, cumEarned:0, penaltyCum:0, loanSeq:0, week:0, keepDetail, byAge:[],
-              surplusTotal:0, openTotal:0, shockTotal:0, savedTotal:0, woTotal:0, woP:0, woLoans:0, cats: CATS.slice() };
+              surplusTotal:0, openTotal:0, shockTotal:0, savedTotal:0, woTotal:0, woP:0, woLoans:0, cats: CATS.slice(),
+              ltaIn:0, ltaOut:0, ltaInt:0, ltaWdN:0 };
   let pid=0;
   for(const k of S.cats){
     const plan = makeSubtypes(C.perCategory);
@@ -1029,8 +1069,9 @@ function createRun(C, seed, keepDetail){
   }
   /* THE CSR RESERVE, MEASURED ONLY. It never moves any money: lenders are paid only what borrowers
      actually pay. It records what such a reserve WOULD have paid lenders (loan amount / weeks for each
-     missed instalment, and the rest of the principal on the original schedule after an exit) and
-     what it would have had back first out of what borrowers later pay, so the results can show how
+     missed instalment, and on the original schedule after an exit, never more in all than the loan
+     amount less what the borrower has paid on it) and what it would have had back out of the
+     principal borrowers later pay (interest goes to the lender first), so the results can show how
      much CSR money it would need. Nothing else in the simulation depends on it. */
   S.res = { shadow:C.resOn, paidOut:0, paidN:0, back:0, peak:0, yieldCum:0, exitCover:0 };
   return S;
@@ -1059,20 +1100,23 @@ function instalment(L, C){
 function stepWeek(S){
   const C=S.C, rng=S.rng, people=S.people, idx=S.idx, allLoans=S.allLoans;
   const w = ++S.week;
-  /* NEW MEMBERS: every joinEvery weeks, joinPer people from each group join, cycling through each
-     group's six archetypes. They start as the founding members did: a random starting pillow bank,
-     the opening rating, no loans. Their weeks of membership count from 1 in the week they join. */
-  if(C.joinOn && w>1 && (w-1)%C.joinEvery===0){
+  /* NEW MEMBERS: everyone who exited last week is replaced by one new member at the start of this
+     week. New members come in one fixed order, cycling through the groups within each archetype:
+     A11, B11, C11, D11, E11, A12, B12, ... E23, then A11 again. They start as the founding members
+     did: a random starting pillow bank, the opening rating, no loans. Their weeks of membership
+     count from 1 in the week they join. */
+  if(C.joinOn && S.joinQueue && S.joinQueue.length){
     const lo=Math.min(C.openMin,C.openMax), hi=Math.max(C.openMin,C.openMax);
-    S.joinSeq = S.joinSeq || {};
     let nextId = S.people.reduce((m,x)=>Math.max(m,x.id),-1)+1;
-    for(let rep=0; rep<C.joinPer; rep++) for(const k of S.cats){
-      const j = S.joinSeq[k] = (S.joinSeq[k]||0)+1, sp = ARCHETYPES[(j-1)%ARCHETYPES.length];
+    for(const gone of S.joinQueue){
+      const j = S.joinSeq = (S.joinSeq||0)+1;
+      const k = CATS[(j-1)%CATS.length], sp = ARCHETYPES[Math.floor((j-1)/CATS.length)%ARCHETYPES.length];
       const code = k+(sp.riskTaker?'2':'1')+TDIGIT[sp.tIdx];
-      const p = makePerson(C, nextId, k, code, code+'-j'+j, sp); p.joinWeek = w;
+      const p = makePerson(C, nextId, k, code, code+'-j'+j, sp); p.joinWeek = w; p.replaces = gone;
       p.pb = p.openPb = (lo===hi) ? lo : ri(S.rng, lo, hi); S.openTotal += p.pb;
       S.people.push(p); S.idx[nextId] = p; nextId++;
     }
+    S.joinQueue = [];
   }
   const LOGCAP = 200000;
   const RES = S.res;
@@ -1096,28 +1140,32 @@ function stepWeek(S){
     p.crAtOpen = p.cr; p.capAtOpen = capFor(p,C); p.rateAtOpen = irFor(p.cr,C,nearestTenure(p.prefTenure,C.tenures));
     if(S.keepDetail){
       const tk = p.loans.filter(L=>L.open).length, gv = p.given.filter(L=>L.open).length;
-      if(w===(p.joinWeek||1)) note(p,(p.joinWeek?'Joined the scheme this week. Starting pillow bank: ':'Starting pillow bank for the simulation: ')+rs2(p.openPb)+' (drawn at random between '+rupees0(Math.min(C.openMin,C.openMax))+' and '+rupees0(Math.max(C.openMin,C.openMax))+').', {kind:'start'});
-      note(p,'Opening balance '+rs2(p.pb)+'.'+
+      if(w===(p.joinWeek||1)) note(p,(p.joinWeek?'Joined the scheme this week, replacing '+p.replaces.name+', who exited in week '+p.replaces.week+'. Starting pillow bank: ':'Starting pillow bank for the simulation: ')+rs2(p.openPb)+' (drawn at random between '+rupees0(Math.min(C.openMin,C.openMax))+' and '+rupees0(Math.max(C.openMin,C.openMax))+').', {kind:'start'});
+      note(p,'Opening balance '+rs2(p.pb)+'.'+(p.lta>EPS?' Long-term assets '+rs2(p.lta)+'.':'')+
         (tk?' You owe '+owedTxt(owedFull(p.loans))+'.':'')+(gv?' Owed to you '+owedTxt(owedFull(p.given,true))+'.':''),
         {kind:'start', bal:p.pb, owe:owedFull(p.loans).tot, owedToYou:owedFull(p.given,true).tot});
     }
+  }
+
+  /* ---- LONG-TERM ASSETS: a week's interest on whatever was held through last week ---- */
+  for(const p of people){
+    if(!(p.lta>EPS)) continue;
+    const inc = r2(p.lta*C.ltaWeekly);
+    if(inc<=EPS) continue;
+    p.lta=r2(p.lta+inc); p.ltaInt=r2(p.ltaInt+inc); S.ltaInt=r2(S.ltaInt+inc);
+    note(p,'Long-term assets earned '+rs2(inc)+' interest this week ('+C.ltaRate+'% a year). Long-term assets now '+rs2(p.lta)+
+      ' ('+rs2(r2(p.ltaIn-p.ltaOut))+' put in'+(p.ltaOut>EPS?' after withdrawals':'')+' + '+rs2(p.ltaInt)+' interest to date).', {kind:'lta'});
   }
 
   /* ---- STAGE 1: WEEKLY SURPLUS OR DEFICIT ---- */
   for(const p of people){
     const cc=C.cat[p.cat];
     let b=0, tier=null;
-    /* PAUSE: with the pillow bank at or above the pause line at the start of the week,
-       there is no extra effort and saving after a sudden expense waits */
-    const paused = C.pausePb>0 && p.pb >= C.pausePb;
     if(C.biasWhen==='always' || p.inDefault){
       for(const t of C.biasTiers) if(p.cr < t.cr){ b=t.amt[p.cat]||0; tier=t; }
     }
-    const pausedBias = paused && b>0;
-    if(paused) b=0;
     if(Math.abs(b-p.biasAmt)>1e-9){
       if(b>0) note(p,(p.biasAmt>0?'Extra effort changes to +':'Extra effort starts: +')+rs2(b)+' a week'+(p.biasAmt>0?' (was +'+rs2(p.biasAmt)+')':'')+', because the rating of '+n1(p.cr)+' is below '+(tier?tier.cr:'a tier')+(C.biasWhen==='default'?' and they are in default':'')+'.', {kind:'bias'});
-      else if(pausedBias) note(p,'Extra effort paused: the pillow bank of '+rs2(p.pb)+' is at or above the '+rupees0(C.pausePb)+' pause line.', {kind:'bias'});
       else note(p,'Extra effort stops: the rating is back above every tier'+(C.biasWhen==='default'?' or the default is cleared':'')+'.', {kind:'bias'});
     }
     p.biasAmt=b; p.biasOn=b>0;
@@ -1128,9 +1176,7 @@ function stepWeek(S){
     /* SAVING AFTER A SUDDEN EXPENSE: each earlier expense is rebuilt in equal weekly
        amounts (to the paisa; the last week takes the remainder), on top of the week's income */
     p.saveWeek = 0;
-    if(paused && p.saves.length && S.keepDetail)
-      note(p,'Saving after a sudden expense paused this week: the pillow bank of '+rs2(p.pb)+' is at or above the '+rupees0(C.pausePb)+' pause line ('+rs2(p.saves.reduce((a,sv)=>a+sv.left,0))+' still to save, picked up again once it falls below).', {kind:'saving'});
-    if(!paused) for(const sv of p.saves){
+    for(const sv of p.saves){
       const amt = sv.weeksLeft<=1 ? sv.left : r2(sv.target/sv.weeks);
       sv.left = r2(sv.left-amt); sv.weeksLeft--;
       p.saveWeek = r2(p.saveWeek+amt);
@@ -1256,6 +1302,7 @@ function stepWeek(S){
         const l = idx[L.lId];
         const forced = (p.pb-total) < 0;
         L.outstanding = r2(L.outstanding - d.pDue); L.paidP = r2((L.paidP||0) + d.pDue); L.paidN = (L.paidN||0) + 1;
+        L.bPaid = r2((L.bPaid||0) + total);   /* everything paid on the loan, for the CSR reserve's cap */
         move(p, -total, 'Paid instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' to '+l.name+', '+rs2(total)+splitTxt([[d.pDue,'principal'],[d.iDue,'interest']])+'.'+
           (forced?' Paid despite the shortfall.':''), 'paid');
         move(l, total, (L.writtenOff?'Recovered on a written-off loan: ':'')+'Received instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' from '+p.name+', '+rs2(total)+splitTxt([[d.pDue,'principal'],[d.iDue,'interest']])+'.', 'received');
@@ -1320,8 +1367,11 @@ function stepWeek(S){
                  : (done>0.005 ? 'Topped up to '+pct+'% of the default on ' : 'Paid '+pct+'% of the default on ');
       const lParts = splitTxt([[payPen,'default interest'],[r2(payI-payPen),'missed interest'],[payP,'principal']]);
       const payParts = lParts;
+      L.bPaid=r2((L.bPaid||0)+pay);
+      /* CSR reserve (measured only): the interest in this payment goes to the lender first; the
+         principal repays the reserve until it has back what it put out on this loan */
       if(RES.shadow && (L.shPaid||0)>EPS){
-        const sr=r2(Math.min(pay, L.shOwed||0));
+        const sr=r2(Math.min(payP, L.shOwed||0));
         if(sr>EPS){ L.shOwed=r2(L.shOwed-sr); RES.back=r2(RES.back+sr); resBackWeek=r2(resBackWeek+sr); }
         const y=r2(pay-sr); if(y>EPS){ RES.yieldCum=r2(RES.yieldCum+y); yieldWeek=r2(yieldWeek+y); }
       }
@@ -1374,7 +1424,7 @@ function stepWeek(S){
       /* CSR RESERVE (measured only): what it would pay the lender, loan amount / weeks with no interest,
          never more than the missed principal it has not already covered */
       if(RES.shadow){
-        const cv = r2(Math.max(0, Math.min(coverRate(L), L.arrP - (L.shOwed||0))));
+        const cv = r2(Math.max(0, Math.min(coverRate(L), L.arrP - (L.shOwed||0), coverCap(L) - (L.shOwed||0))));
         if(cv>EPS){ L.shOwed=r2((L.shOwed||0)+cv); L.shPaid=r2((L.shPaid||0)+cv);
           RES.paidOut=r2(RES.paidOut+cv); RES.paidN++; resPaidWeek=r2(resPaidWeek+cv); }
       }
@@ -1385,6 +1435,75 @@ function stepWeek(S){
 
   for(const p of people){ p.onTimeThisWeek = 0; p.recoveredThisWeek = 0; p.wasBorrower = false; p.borrowOutcome = ''; }
   for(const p of people) p.owedAtStart = owedNow(p);
+
+  /* ---- STAGE 2-LTA: LONG-TERM ASSETS, THE ONLY WITHDRAWAL ----
+     Someone already in default who would reach exitWeeks in default in a row this week, and so
+     exit, can stay in only by paying this week's instalments AND everything overdue. After the
+     week's income has come in and before anything else is paid:
+       - if a positive pillow bank plus long-term assets cover all of it, they pay it now: the
+         pillow bank's cash first, the rest straight from long-term assets to the lenders. A
+         negative pillow bank is left as it is; long-term assets never go to fill it. They are
+         out of default and stay in, and the week scores as paying and clearing.
+       - if not, long-term assets are not touched at all, and (unless the week's payments clear
+         the default some other way) they exit at the end of the week.
+     Long-term assets are never used for anything else: not for an exit because the rating fell
+     below the exit rating, and not toward an exit balance. */
+  for(const p of people){
+    if(p.exited || !(C.exitWeeks>0) || !(p.lta>EPS) || !(arrearsOf(p)>EPS) || p.defStreak+1 < C.exitWeeks) continue;
+    const list = dues.get(p.id) || [];
+    const dueNow=r2(dueTotal(p.id)), overdue=r2(arrearsOf(p)), need=r2(dueNow+overdue);
+    const cash=r2(Math.max(0,p.pb)), wk=p.defStreak+1;
+    if(need <= cash+EPS) continue;                                   /* the pillow bank covers it: paid the usual way */
+    if(cash + p.lta < need - EPS){
+      note(p,'This would be week '+wk+' in default in a row, so they will exit unless the default is cleared. Staying in needs '+rs2(need)+(dueNow>EPS ? ' ('+rs2(dueNow)+' of instalments due this week + '+rs2(overdue)+' overdue)' : ' overdue')+'; the pillow bank ('+rs2(p.pb)+') and long-term assets ('+rs2(p.lta)+') together do not cover it, so long-term assets are not touched.', {kind:'lta'});
+      continue;
+    }
+    const fromPb=cash, fromLta=r2(need-cash);
+    note(p,'This would be week '+wk+' in default in a row, so they would exit. To stay in they pay '+(dueNow>EPS?'this week’s instalments ('+rs2(dueNow)+') and ':'')+'everything overdue ('+rs2(overdue)+'): '+
+      (fromPb>EPS ? rs2(fromPb)+' from the pillow bank and ' : '')+rs2(fromLta)+' straight from long-term assets.', {kind:'lta'});
+    let pbLeft=fromPb, ltaUsed=0;
+    /* pay one amount to a lender: the pillow bank's cash first, then long-term assets */
+    const payOut = (amt, l, what, lTxt, kind) => {
+      const a=r2(Math.min(amt, pbLeft)), b=r2(amt-a);
+      if(a>EPS){ pbLeft=r2(pbLeft-a); move(p, -a, what+(b>EPS?' (part, '+rs2(a)+' of '+rs2(amt)+', from the pillow bank)':' (from the pillow bank)')+'.', kind); }
+      if(b>EPS){ p.lta=r2(p.lta-b); ltaUsed=r2(ltaUsed+b);
+        note(p, what+(a>EPS?' (the other '+rs2(b)+'':' ('+rs2(b)+'')+' paid straight from long-term assets, now '+rs2(p.lta)+').', {kind:'lta', ltaAmt:-b}); }
+      move(l, amt, lTxt, 'received');
+    };
+    /* 1. this week's instalments */
+    for(const d of list){
+      const L=d.L, l=idx[L.lId], total=r2(d.pDue+d.iDue);
+      L.outstanding=r2(L.outstanding-d.pDue); L.paidP=r2((L.paidP||0)+d.pDue); L.paidN=(L.paidN||0)+1; L.bPaid=r2((L.bPaid||0)+total);
+      payOut(total, l, 'Paid instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' to '+l.name+', '+rs2(total)+splitTxt([[d.pDue,'principal'],[d.iDue,'interest']]),
+        'Received instalment '+d.no+' of '+L.tenure+' on '+loanTag(L)+' from '+p.name+', '+rs2(total)+splitTxt([[d.pDue,'principal'],[d.iDue,'interest']])+'.', 'paid');
+      l.interestEarned=r2(l.interestEarned+d.iDue); p.interestPaid=r2(p.interestPaid+d.iDue); S.cumPaid+=d.iDue; S.cumEarned+=d.iDue;
+      p.paid++; p.onTimeThisWeek++; L.paidWk=1; L.schedLeft--;
+    }
+    dues.delete(p.id);
+    /* 2. everything overdue, oldest loan first: missed and default interest, then missed principal */
+    for(const L of p.loans){
+      if(!L.open) continue;
+      const owed=r2(L.arrP+L.arrI); if(owed<=EPS) continue;
+      const l=idx[L.lId], payI=r2(L.arrI), payP=r2(L.arrP), payPen=r2(Math.min(payI, L.arrPen||0));
+      const spellCost=L.penSpell||0, spellWks=L.spellWeeks||0, spellFrom=L.spellStart, back=L.arrN;
+      L.bPaid=r2((L.bPaid||0)+owed);
+      if(RES.shadow && (L.shPaid||0)>EPS){
+        const sr=r2(Math.min(payP, L.shOwed||0));   /* interest to the lender first, principal repays the reserve */
+        if(sr>EPS){ L.shOwed=r2(L.shOwed-sr); RES.back=r2(RES.back+sr); resBackWeek=r2(resBackWeek+sr); }
+        const y=r2(owed-sr); if(y>EPS){ RES.yieldCum=r2(RES.yieldCum+y); yieldWeek=r2(yieldWeek+y); }
+      }
+      L.penPaid=r2((L.penPaid||0)+payPen); L.outstanding=r2(L.outstanding-payP); L.paidP=r2((L.paidP||0)+payP);
+      L.arrP=0; L.arrI=0; L.arrPen=0; L.arrN=0; L.penSpell=0; L.spellWeeks=0; L.spellStart=undefined;
+      L.defPaidWeek=r2((L.defPaidWeek||0)+owed); p.recoveredThisWeek+=back;
+      const parts=splitTxt([[payPen,'default interest'],[r2(payI-payPen),'missed interest'],[payP,'principal']]);
+      payOut(owed, l, 'Cleared the default on '+loanTag(L)+' to '+l.name+', '+rs2(owed)+parts+'. In default since week '+spellFrom+' ('+plural(spellWks,'week')+'); it cost '+rs2(spellCost)+' in default interest',
+        'Default cleared on '+loanTag(L)+' from '+p.name+', '+rs2(owed)+parts+'.', 'arrears');
+      l.interestEarned=r2(l.interestEarned+payI); p.interestPaid=r2(p.interestPaid+payI); S.cumPaid+=payI; S.cumEarned+=payI;
+    }
+    for(const L of p.loans) if(L.open && L.outstanding<=EPS && L.arrP+L.arrI<=EPS){ L.outstanding=0; L.open=false; closeNotes(p,L); }
+    p.ltaOut=r2(p.ltaOut+ltaUsed); p.ltaWd++; S.ltaOut=r2(S.ltaOut+ltaUsed); S.ltaWdN++;
+    note(p,'Every default cleared, so they stay in the scheme. '+rs2(ltaUsed)+' came from long-term assets; '+rs2(p.lta)+' left.', {kind:'lta'});
+  }
   /* WHO HAS TO BORROW. With an instalment due this week: anyone whose pillow bank would go
      below 0 once it is paid. With nothing due: anyone at or below the borrowing line. */
   const mustBorrow = x => { const d=dueTotal(x.id); return d>EPS ? (x.pb - d < -EPS) : (x.pb <= C.borrowBelow); };
@@ -1591,14 +1710,16 @@ function stepWeek(S){
     const crBefore = p.cr;
     if(d) crAdd(p,d,C);
     /* RATING WITHOUT BORROWING: a whole week not in default and owing nothing at all, from the start of
-       the week to the end, adds one amount, bigger for a bigger pillow bank: crIdleUp, or pbUp1 above
-       pbUp1At, or pbUp2 above pbUp2At. Paying off the last loan, or coming back from exit, does not
-       count that same week: the gain starts with the first full week owing nothing. */
+       the week to the end, adds crIdleUp, plus crLentUp for every whole crLentPer of net lent at the
+       end of the week. Paying off the last loan, or coming back from exit, does not count that same
+       week: the gain starts with the first full week owing nothing. */
     if(p.clearAtOpen && !nowDef && !p.loans.some(L=>L.open) && !((p.exitBal||0)>EPS)){
-      const g = p.pb > C.pbUp2At ? C.pbUp2 : p.pb > C.pbUp1At ? C.pbUp1 : C.crIdleUp;
+      const nl = netLentOf(p, people), steps = nl>0 ? Math.floor(nl/C.crLentPer + 1e-9) : 0;
+      const g = Math.round((C.crIdleUp + C.crLentUp*steps)*1000)/1000;
       if(g>0){ const before=p.cr; crAdd(p, g, C);
-        if(p.cr!==before) note(p,'Rating '+n1(before)+' → '+n1(p.cr)+' (+'+g+' for a full week not in default and owing nothing'+
-          (p.pb > C.pbUp1At ? ', with a pillow bank of '+rs2(p.pb)+', above '+rupees0(p.pb > C.pbUp2At ? C.pbUp2At : C.pbUp1At) : '')+').',{kind:'rating'}); }
+        if(p.cr!==before) note(p,'Rating '+n1(before)+' → '+n1(p.cr)+' (+'+g+': '+C.crIdleUp+' for a full week not in default and owing nothing'+
+          (steps ? ', plus '+steps+' × '+C.crLentUp+' for '+rs2(nl)+' net lent' : (nl>EPS ? '; net lent '+rs2(nl)+' is under '+rupees0(C.crLentPer) : ''))+
+          (p.cr<before+g-1e-9 ? ', held at the ceiling' : '')+').',{kind:'rating'}); }
     }
     const clipped = d && Math.abs((crBefore+d)-p.cr) > 1e-9;
     const why = pts.length ? parts.join('; ')+(pts.length>1 && C.crBasis==='avg' ? ' (averaged over '+pts.length+' loans)' : '')
@@ -1653,7 +1774,7 @@ function stepWeek(S){
     if(p.exited && RES.shadow){
       for(const d of p.exitDebts){
         if(!(d.weeksLeft>0)) continue;
-        const left=r2(d.p-(d.shRp||0)-(d.shCov||0));
+        const left=r2(Math.min(d.p, d.capP)-(d.shRp||0)-(d.shCov||0));   /* never past the loan amount less what the borrower paid */
         const sa = left>EPS ? r2(d.weeksLeft<=1 ? left : Math.min(coverRate(d.L), left)) : 0;
         if(sa>EPS){ d.shCov=r2((d.shCov||0)+sa); RES.paidOut=r2(RES.paidOut+sa); RES.paidN++; RES.exitCover=r2(RES.exitCover+sa); resPaidWeek=r2(resPaidWeek+sa); }
         d.weeksLeft--;
@@ -1694,17 +1815,30 @@ function stepWeek(S){
         const dp = r2(L.outstanding), dx = C.exitOwe==='principal' ? 0 : r2(L.arrI + remIntSched(L));
         /* weeksLeft: instalments not yet due when the loan closed; the measured CSR reserve would keep
            paying the lender loan amount / weeks on each of them, as if each were missed */
-        p.exitDebts.push({L, lId:L.lId, p:dp, x:dx, weeksLeft:(dp>EPS ? Math.max(1,L.schedLeft) : Math.max(0,L.schedLeft)), shRp:r2(L.shOwed||0), shCov:0}); p.exitBal = r2(p.exitBal + dp + dx);
+        p.exitDebts.push({L, lId:L.lId, p:dp, x:dx, weeksLeft:(dp>EPS ? Math.max(1,L.schedLeft) : Math.max(0,L.schedLeft)), shRp:r2(L.shOwed||0), shCov:0, capP:coverCap(L)}); p.exitBal = r2(p.exitBal + dp + dx);
         L.shOwed = 0;
         L.open=false; L.closedByExit=true; L.outstanding=0; L.arrP=0; L.arrI=0; L.arrPen=0; L.schedLeft=0;
         note(l,'Closed and wrote off '+loanTag(L)+' to '+p.name+', who has exited the scheme. They owe you '+rs2(dp+dx)+splitTxt([[dp,'principal'],[dx,'interest']])+', to be repaid in one go before they can come back.', {kind:'writeoff'});
       }
+      if(C.joinOn) (S.joinQueue = S.joinQueue || []).push({name:p.name, week:w});
       note(p,'Exited the scheme after '+why+'. Every loan you owe is closed; your exit balance is '+rs2(p.exitBal)+'. No borrowing or lending until you repay all of it in one go.',{kind:'writeoff'});
     }
     p.inDefault = nowDef;
     if(!nowDef) p.spellLoans = 0;
     if(nowDef){ p.weeksBehind++; if(!wasDef) note(p,'Now in default: at least one instalment is unpaid.',{kind:'status'}); }
     else if(wasDef) note(p,'Out of default: every missed instalment and all default interest has been paid.',{kind:'status'});
+  }
+
+  /* ---- STAGE 5b: LONG-TERM ASSETS ----
+     A pillow bank above ltaAbove at the end of the week is brought back down to ltaTo, and the
+     difference goes into long-term assets. Not for anyone who has exited: they are saving up to
+     repay their exit balance in one go. */
+  if(C.ltaAbove>0) for(const p of people){
+    if(p.exited || !(p.pb > C.ltaAbove + EPS)) continue;
+    const amt = r2(p.pb - Math.min(C.ltaTo, C.ltaAbove));
+    if(amt<=EPS) continue;
+    p.lta=r2(p.lta+amt); p.ltaIn=r2(p.ltaIn+amt); S.ltaIn=r2(S.ltaIn+amt);
+    move(p, -amt, 'Pillow bank above '+rupees0(C.ltaAbove)+': put '+rs2(amt)+' into long-term assets, bringing it back to '+rupees0(Math.min(C.ltaTo, C.ltaAbove))+'. Long-term assets now '+rs2(p.lta)+'.', 'lta');
   }
 
   /* ---- STAGE 6: RECORD THE WEEK ---- */
@@ -1717,7 +1851,8 @@ function stepWeek(S){
              cumPaid:S.cumPaid, cumEarned:S.cumEarned, outstanding:0, behind:0,
              arrearsP:0, woPUnpaid:0, defaultOwed:0, penaltyCum:S.penaltyCum, penaltyWeek:penWeekTotal, netTotal:0,
              resPaidWeek, resBackWeek, yieldWeek, resPaid:RES.paidOut, resBack:RES.back, resN:RES.paidN, yieldCum:RES.yieldCum, resExitCover:RES.exitCover,
-             resOut:0, resPeak:0, resInExit:0, resInDefault:0, by:{}};
+             resOut:0, resPeak:0, resInExit:0, resInDefault:0,
+             ltaTotal:0, ltaIntCum:S.ltaInt, ltaInCum:S.ltaIn, ltaOutCum:S.ltaOut, ltaWdN:S.ltaWdN, by:{}};
   /* CSR RESERVE REQUIRED: paid out and not yet repaid. The peak is the size it would have needed. */
   rec.resOut = r2(RES.paidOut - RES.back); RES.peak = Math.max(RES.peak, rec.resOut); rec.resPeak = RES.peak;
   for(const L of allLoans) if(L.open) rec.resInDefault += (L.shOwed||0);
@@ -1744,11 +1879,11 @@ function stepWeek(S){
   for(const p of people){
     const ns = netSheet(p);
     p.nb=ns.net; p.nbRecv=ns.recv; p.nbOwe=ns.owe; p.defOwed=ns.defOwed; p.netOwed=netOwedOf(p);
-    rec.defaultOwed += ns.defOwed; rec.netTotal += ns.net;
+    rec.defaultOwed += ns.defOwed; rec.netTotal += ns.net; rec.ltaTotal += p.lta;
     const b = rec.by[p.code] || (rec.by[p.code]=newBy());
     /* BY WEEK OF MEMBERSHIP: the same totals, filed under how long this person has been a member */
     const age = w - (p.joinWeek||1), byA = S.byAge[age] || (S.byAge[age]={}), ba = byA[p.code] || (byA[p.code]=newBy());
-    for(const t of [b, ba]){ t.pb+=p.pb; t.cr+=p.cr; t.ip+=p.interestPaid; t.ie+=p.interestEarned; t.la+=p.lentArrearsP; t.wop+=p.woPUnpaid; t.nb+=ns.net; t.dout+=ns.defOwed; t.no+=p.netOwed; t.wol+=p.woLost; t.spells+=p.spellRecs.length; t.wkdef+=p.weeksBehind; t.n++; }
+    for(const t of [b, ba]){ t.pb+=p.pb; t.cr+=p.cr; t.ip+=p.interestPaid; t.ie+=p.interestEarned; t.la+=p.lentArrearsP; t.wop+=p.woPUnpaid; t.nb+=ns.net; t.dout+=ns.defOwed; t.no+=p.netOwed; t.wol+=p.woLost; t.spells+=p.spellRecs.length; t.wkdef+=p.weeksBehind; t.lta+=p.lta; t.ltaInt+=p.ltaInt; t.n++; }
     /* OWED BY EXITED PEOPLE: their exit balance (their loans are closed on exit) */
     p.exOwed = p.exited ? (p.exitBal||0) : 0;
     if(p.exited){ b.exited++; b.exOwed+=p.exOwed; ba.exited++; ba.exOwed+=p.exOwed; rec.exitedN++; rec.exitedOwed+=p.exOwed;
@@ -1793,6 +1928,7 @@ function stepWeek(S){
     p.spellsSeries.push(p.spellRecs.length); p.wkdefSeries.push(p.weeksBehind);
     p.exitedSeries.push(p.exited?1:0); p.exOwedSeries.push(p.exOwed||0);
     p.avglenSeries.push(p.spellRecs.length ? p.weeksBehind/p.spellRecs.length : 0);
+    p.ltaSeries.push(p.lta); p.ltaIntSeries.push(p.ltaInt); p.ltaNetInSeries.push(r2(p.ltaIn-p.ltaOut));
   }
 }
 
@@ -2298,7 +2434,9 @@ function drawInterestVsLoss(labels, W){
     ['Written-off principal still unpaid', rupees0(lastW.woPUnpaid)],
     ['Missed or lost in all', rupees0(lost), 'arrears + written off'],
     ['Interest earned \u00F7 missed or lost', cover===null?'nothing missing':(cover).toFixed(2)+'\u00D7',
-      cover===null?'':(cover>=1?'Interest more than covers what is missing.':'Interest covers '+Math.round(cover*100)+'% of what is missing.')]
+      cover===null?'':(cover>=1?'Interest more than covers what is missing.':'Interest covers '+Math.round(cover*100)+'% of what is missing.')],
+    ['Interest earned ÷ written-off principal still unpaid', lastW.woPUnpaid>0.5 ? (lastW.cumPaid/lastW.woPUnpaid).toFixed(2)+'×' : 'nothing written off',
+      'Arrears on loans still running not counted as lost, since those loans are alive and most catch up. The true figure lies between this and the card before.']
   ].map(statCard).join('');
   const el=$('c-int'); if(!el||!haveChart) return;
   if(charts['c-int']) charts['c-int'].destroy();
@@ -2449,11 +2587,32 @@ function keyFigs(){
   const avgInCover=W.reduce((a,r)=>a+Math.max(0,r.outstanding+(r.exitedP||0)-(r.resOut||0)),0)/n;
   const avgOut=avgIn;
   const lost=last.arrearsP+last.woPUnpaid;
+  /* THE LESS PESSIMISTIC VERSION: missed principal on loans still running is not counted as lost
+     (those loans are alive and most catch up), though it stays in money in; only principal in unpaid
+     exit balances is counted as lost */
+  const lostExit=last.woPUnpaid;
+  /* WITH CSR COVER: INTEREST THAT BECAME PRINCIPAL. The reserve never puts out more on a loan than the
+     loan amount less everything the borrower paid, interest included. So on a loan it covers, any
+     principal the reserve will never make up was in effect replaced by interest the lender received
+     earlier: that interest only gave them their own money back, and is not profit. Worked out loan by
+     loan at the horizon, averaged over the repetitions:
+       absExit  exit balances:          principal in the exit balance above the reserve's cap
+       absArr   loans still running:    missed principal above the reserve's cap (pessimistic version only) */
+  let absExit=0, absArr=0;
+  for(const S of LAST.all){
+    for(const p of S.people) for(const d of (p.exitDebts||[])) absExit += Math.max(0, d.p - (d.capP===undefined ? d.p : d.capP));
+    for(const L of S.allLoans) if(L.open && !L.writtenOff && L.arrP>EPS) absArr += Math.max(0, L.arrP - coverCap(L));
+  }
+  absExit = r2(absExit/NR()); absArr = r2(absArr/NR());
+  const earnedCover = last.cumEarned - absExit - absArr, earnedCoverExit = last.cumEarned - absExit;
   return {
     exE:exShare(p=>p.cat==='E'), exAD:exShare(p=>p.cat!=='E'),
     earned:last.cumEarned, lost, cover: lost>0.5 ? last.cumEarned/lost : null,
+    lostExit, coverExit: lostExit>0.5 ? last.cumEarned/lostExit : null,
     yrs, avgIn, avgInCover, avgOut,
-    lendYr: avgInCover>0.5 ? last.cumEarned/avgInCover/yrs : 0, lendYrNet: avgIn>0.5 ? (last.cumEarned-lost)/avgIn/yrs : 0,
+    absExit, absArr, earnedCover, earnedCoverExit,
+    lendYr: avgInCover>0.5 ? earnedCover/avgInCover/yrs : 0, lendYrNet: avgIn>0.5 ? (last.cumEarned-lost)/avgIn/yrs : 0,
+    lendYrExit: avgIn>0.5 ? (last.cumEarned-lostExit)/avgIn/yrs : 0,
     resPeak:last.resPeak, people:LAST.detail.people.length
   };
 }
@@ -2502,7 +2661,7 @@ function render(){
     'Defaults and losses': (dueAll?pct(100*missedAll/dueAll):'0%')+' of instalments missed \u00B7 '+asNumber(last.behind)+' in default now',
     'Access to credit': 'excluded now: E '+pct(100*KF.exE)+' \u00B7 A to D '+pct(100*KF.exAD),
     'CSR reserve': rupees0(last.resPeak)+' most ever required \u00B7 '+rupees0(last.resPeak/totalPeople)+' per person',
-    'Saving': rupees0(last.savedCum)+' saved after sudden expenses'
+    'Saving': rupees0(last.ltaTotal)+' in long-term assets · '+rupees0(last.savedCum)+' saved after sudden expenses'
   };
   const avgOut=KF.avgOut, lendYr=KF.lendYr, lendYrNet=KF.lendYrNet;
   const SECTIONS=[
@@ -2544,15 +2703,21 @@ function render(){
       ['Required from the reserve now', rupees0(last.resOut), rupees0(last.resInDefault)+' in loans still in default, '+rupees0(last.resInExit)+' in exit balances.'],
       ['Reserve would have paid out to date', rupees0(last.resPaid), count(last.resN)+' instalments covered, including weeks after a borrower exited. '+rupees0(last.resPaidWeek)+' this week.'],
       ['Reserve would have had back to date', rupees0(last.resBack), (last.resPaid>0.5?Math.round(100*last.resBack/last.resPaid)+'% of what it paid out. ':'')+rupees0(last.resBackWeek)+' this week.'],
-      ['Recovery yield to lenders', rupees0(last.yieldCum), 'Paid to lenders only when a covered borrower catches up. What the borrower pays goes first to the reserve, until it has back what it covered; the rest (interest, default interest and any principal the reserve did not cover) goes to the lender. Nothing comes while the borrower stays in default or exited.'],
+      ['Recovery yield to lenders', rupees0(last.yieldCum), 'Paid to lenders when a covered borrower catches up. Interest and default interest go to the lender first; principal repays the reserve until it has back what it covered on that loan, and any principal after that goes to the lender. Nothing comes while the borrower stays in default or exited.'],
       ['Each \u20B91 lenders have in, after a year, with CSR cover', '\u20B91 \u2192 \u20B9'+(1+lendYr).toFixed(2),
-        pct(100*lendYr)+' a year. Interest earned ('+rupees0(KF.earned)+') \u00F7 lenders\u2019 money in on an average week ('+rupees0(KF.avgInCover)+') \u00F7 '+KF.yrs.toFixed(2)+' years. Money in here leaves out what the reserve would already have paid them.'],
+        pct(100*lendYr)+' a year. (Interest earned '+rupees0(KF.earned)+' \u2212 '+rupees0(KF.absExit+KF.absArr)+' of interest that only made up principal the reserve does not cover) \u00F7 lenders\u2019 money in on an average week ('+rupees0(KF.avgInCover)+') \u00F7 '+KF.yrs.toFixed(2)+' years. The reserve never pays more on a loan than the loan amount less everything the borrower paid, interest included, so interest a covered borrower paid before defaulting can end up standing in for principal: '+rupees0(KF.absExit)+' on exit balances and '+rupees0(KF.absArr)+' on missed principal of loans still running. Money in here leaves out what the reserve would already have paid them.'],
       ['Each \u20B91 lenders have in, after a year, without cover', '\u20B91 \u2192 \u20B9'+(1+lendYrNet).toFixed(2),
         pct(100*lendYrNet)+' a year. (Interest earned '+rupees0(KF.earned)+' \u2212 '+rupees0(KF.lost)+' of principal in arrears or in unpaid exit balances) \u00F7 money in on an average week ('+rupees0(KF.avgIn)+') \u00F7 '+KF.yrs.toFixed(2)+' years.'],
+      ['Each \u20B91 lenders have in, after a year, without cover, arrears not counted as lost', '\u20B91 \u2192 \u20B9'+(1+KF.lendYrExit).toFixed(2),
+        pct(100*KF.lendYrExit)+' a year. The same as the card before, except that the '+rupees0(KF.lost-KF.lostExit)+' of missed principal on loans still running is not subtracted, since those loans are still alive and most catch up; it still counts in money in. (Interest earned '+rupees0(KF.earned)+' \u2212 '+rupees0(KF.lostExit)+' of principal in unpaid exit balances) \u00F7 money in on an average week ('+rupees0(KF.avgIn)+') \u00F7 '+KF.yrs.toFixed(2)+' years. The true figure lies between this card and the one before.'],
       ['Lenders\u2019 money in, average week', rupees0(KF.avgIn),
         'How it is counted. At the end of each week: the principal lenders have lent out and not yet had back. That is what is still owed on open loans, missed instalments included, plus the principal in exit balances. Interest is not counted. On exit a loan closes and its principal moves into the exit balance, so nothing is counted twice. The weekly totals are averaged over all '+asNumber(LAST.week)+' weeks, the way banks average their loans to work out yield on advances.']
     ]]] : []),
     ['Saving', [
+      ['Held in long-term assets now', rupees0(last.ltaTotal), rupees0(last.ltaTotal/totalPeople)+' per participant.'],
+      ['Interest earned on long-term assets to date', rupees0(last.ltaIntCum), 'At '+C.ltaRate+'% a year. It stays in long-term assets.'],
+      ['Put into long-term assets to date', rupees0(last.ltaInCum), 'Everything above '+rupees0(C.ltaAbove)+' at the end of a week, bringing the pillow bank back to '+rupees0(Math.min(C.ltaTo,C.ltaAbove))+'.'],
+      ['Withdrawn from long-term assets', rupees0(last.ltaOutCum), count(last.ltaWdN)+' times, each by someone who would otherwise have reached '+plural(C.exitWeeks,'week')+' in default in a row, paying that week’s instalments and everything overdue straight to their lenders.'],
       ['Saved after sudden expenses to date', rupees0(last.savedCum), rupees0(last.savedWeek)+' this week.'],
       ['Sudden expenses to date', rupees0(perRun(LAST.all.reduce((s,S)=>s+S.shockTotal,0)))]
     ]]
@@ -2629,6 +2794,8 @@ function drawLive(atZero){
 
 const METRICS=[
   ['panel-pb','pb','Mean pillow bank', v=>rupees0(v)],
+  ['panel-lta','lta','Mean long-term assets', v=>rupees0(v)],
+  ['panel-ltaint','ltaInt','Mean interest earned on long-term assets', v=>rupees0(v)],
   ['panel-dout','dout','Mean default owed', v=>rupees0(v)],
   ['panel-cr','cr','Mean credit rating', v=>asNumber(v)],
   ['panel-def','def','Participants in default', v=>asNumber(v)],
@@ -2855,10 +3022,13 @@ function drawPerson(id){
     ['Archetype', p.code+' \u2014 '+(p.riskTaker?'risk-taking':'cautious')+', '+p.prefTenure+'-week tenure'],
     ['Group', CATNAME[p.cat]],
     ['Pillow bank', rupees0(p.pb)],
+    ['Long-term assets', rupees0(p.lta)+(p.ltaInt>EPS?' <span style="font-size:.85rem;font-weight:400">(incl. '+rupees0(p.ltaInt)+' interest)</span>':'')],
+    ['Withdrawn from long-term assets', p.ltaWd ? rupees0(p.ltaOut)+' ('+plural(p.ltaWd,'time')+', on facing exit)' : 'Never'],
     ['Credit rating', asNumber(p.cr)],
     ['Rate on a new loan', irFor(p.cr,C,nearestTenure(p.prefTenure,C.tenures)).toFixed(1)+'% (over '+nearestTenure(p.prefTenure,C.tenures)+' weeks)'],
     ['Loans allowed now', netOwedBinds(p,C) ? 'No new loans (net-owed rule)' : capFor(p,C)],
     ['Net owed', rupees0(p.netOwed)],
+    ['Net lent (for the rating)', rupees0(netLentOf(p, LAST.detail.people))],
     ['Default owed (incl. default interest)', rupees0(p.defOwed)],
     ['Effort bias this week', p.biasAmt?'+'+rupees0(p.biasAmt):'None'],
     ['Sudden expenses (total)', rupees0(p.shockTotal||0)],
@@ -2898,6 +3068,12 @@ function drawPerson(id){
   ]), 'Pillow bank (\u20B9)', asRupees, null, {legend:false});
 
 
+  draw('c-person-lta', labels, [
+    {label:'Long-term assets', data:p.ltaSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5},
+    {label:'Put in (less any withdrawals)', data:p.ltaNetInSeries, borderColor:'#6E808D', backgroundColor:'#6E808D', borderDash:[6,4], borderWidth:2},
+    {label:'Interest earned to date', data:p.ltaIntSeries, borderColor:'#1A73E8', backgroundColor:'#1A73E8', borderWidth:2.5}
+  ], 'Rupees', asRupees);
+
   draw('c-person-cr', labels, faint('cr').concat([
     {label:p.name+' credit rating', data:p.crSeries, borderColor:COLOR[p.cat], backgroundColor:COLOR[p.cat], borderWidth:3.5},
     {label:'Exclusion threshold', data:labels.map(()=>C.crNoLoan), borderColor:'#A81F2D', backgroundColor:'#A81F2D', borderDash:[6,4], borderWidth:2}
@@ -2921,9 +3097,9 @@ const KIND={
   missed:['Missed','def'], notreceived:['Not received','def'], loan:['Loan','warn'], closed:['Closed','reg'],
   refused:['Refused','def'], declined:['Declined','neu'], status:['Status','neu'], book:['Loan book','neu'], rating:['Rating','inf'],
   end:['Week closes','inf'], info:['Note','neu'], penalty:['Default interest','warn'], net:['Net owed','inf'],
-  summary:['Totals','inf'], defnote:['Default','def'], schedule:['Schedule','neu'], shock:['Expense','def'], bias:['Effort','neu'], saving:['Saving','reg'], writeoff:['Written off','def'], reserve:['CSR reserve','warn']
+  summary:['Totals','inf'], defnote:['Default','def'], schedule:['Schedule','neu'], shock:['Expense','def'], bias:['Effort','neu'], saving:['Saving','reg'], lta:['Long-term assets','inf'], writeoff:['Written off','def'], reserve:['CSR reserve','warn']
 };
-const MONEYKINDS=new Set(['reserve','start','surplus','shock','bias','saving','paid','received','arrears','prepay','loan','market','end']);
+const MONEYKINDS=new Set(['lta','reserve','start','surplus','shock','bias','saving','paid','received','arrears','prepay','loan','market','end']);
 const LOANKINDS=new Set(['reserve','schedule','defnote','start','due','paid','received','arrears','prepay','missed','notreceived','loan','closed','refused','declined','book','penalty','net','summary','end','writeoff']);
 
 function logRows(p){ return p.log; }
@@ -2971,6 +3147,8 @@ function renderStatus(){
       ['posture','Posture',p=>p.riskTaker?1:0, p=>p.riskTaker?'Risk-taking':'Cautious'],
       ['tenure','Tenure',p=>p.prefTenure, p=>p.prefTenure+'w'],
       ['pb','Pillow bank',p=>p.pb, p=>rupees0(p.pb)],
+      ['lta','Long-term assets',p=>p.lta, p=>rupees0(p.lta)],
+      ['ltai','Long-term asset interest',p=>p.ltaInt, p=>rupees0(p.ltaInt)],
       ['cr','Rating',p=>p.cr, p=>asNumber(p.cr)],
       ['status','Status',p=>p.inDefault?1:0, p=>tag(p.inDefault)],
       ['open','Loans open',p=>openOf(p)],
@@ -3008,6 +3186,8 @@ function renderStatus(){
       ['floor','At rating floor',r=>r.g.filter(p=>p.cr<=C.crFloor+1e-9).length/R],
       ['cr','Mean rating',r=>mean(r.g,p=>p.cr), r=>mean(r.g,p=>p.cr).toFixed(1)],
       ['pb','Mean pillow bank',r=>mean(r.g,p=>p.pb), r=>rupees0(mean(r.g,p=>p.pb))],
+      ['lta','Long-term assets',r=>sum(r.g,p=>p.lta), r=>rupees0(sum(r.g,p=>p.lta))],
+      ['ltai','Long-term asset interest',r=>sum(r.g,p=>p.ltaInt), r=>rupees0(sum(r.g,p=>p.ltaInt))],
       ['open','Loans open',r=>sum(r.g,openOf)],
       ['taken','Taken',r=>sum(r.g,p=>p.loansTaken)],
       ['given','Given',r=>sum(r.g,p=>p.loansGiven)],
@@ -3061,6 +3241,7 @@ function renderGroups(C, pool){
     ['Instalments missed', g=>pc(missR(g))],
     ['Mean rating', g=>mean(g,p=>p.cr).toFixed(1)],
     ['Mean pillow bank', g=>rupees0(mean(g,p=>p.pb))],
+    ['Mean long-term assets', g=>rupees0(mean(g,p=>p.lta))],
     ['Interest paid, per person', g=>rupees0(mean(g,p=>p.interestPaid))],
     ['Interest earned, per person', g=>rupees0(mean(g,p=>p.interestEarned))]
   ];
@@ -3075,6 +3256,7 @@ function renderGroups(C, pool){
    Which ones are open is remembered in this browser. */
 const CHART_SECTIONS=[
   ['Pillow banks and ratings', ['Pillow bank','Credit rating','Credit rating distribution','Amount owed by credit rating'], true],
+  ['Long-term assets', ['Long-term assets','Interest earned on long-term assets'], true],
   ['Defaults', ['Participants in default','Times gone into default, per participant','Average weeks per default','Default owed per participant'], false],
   ['Access and exits', ['Cannot borrow','People exited','Owed by exited people'], false],
   ['Interest and losses', ['Interest paid per participant','Interest earned per participant','Net owed per participant','Lent principal missed or lost, per lender','Interest earned vs principal missed or lost'], true],
@@ -3122,7 +3304,7 @@ function settingLabel(k){
   m=k.match(/^([A-E])_(\w+)$/); if(m) return m[1]+' '+(GRP_LABEL[m[2]]||m[2]);
   m=k.match(/^bias(\d)CR$/); if(m) return 'effort bias tier '+m[1]+' rating';
   m=k.match(/^band(\d)(CR|Max)$/); if(m) return 'rating band '+m[1]+(m[2]==='CR'?' rating':' loans');
-  const special={pausePb:'effort and saving pause line', trackRows:'track-record limit', shockRows:'sudden expenses', maxLoans:'most loans at a top rating', crNoLoan:'no loans below rating',
+  const special={ltaAbove:'long-term assets above', ltaTo:'long-term assets back down to', ltaRate:'long-term asset interest %', trackRows:'track-record limit', shockRows:'sudden expenses', maxLoans:'most loans at a top rating', crNoLoan:'no loans below rating',
     crPaidClean:'rating: paid, not in default', crMissClean:'rating: missed, not in default', crPaidDef:'rating: paid, in default', crMissDef:'rating: missed, in default', crIdleDef:'rating: nothing paid, in default'};
   if(special[k]) return special[k];
   m=k.match(/^clr(\d)$/); if(m) return 'rating: default cleared, share '+m[1];
@@ -3133,7 +3315,7 @@ function settingValue(k,v){
   if(k==='trackRows'){ try{ const r=JSON.parse(v||'[]'); return r.length?r.map(x=>rupees0(+x.amt)+' until '+x.x+' wks').join(', '):'off'; }catch(e){ return String(v); } }
   if(k==='shockRows'){ try{ const r=JSON.parse(v||'[]'); return r.length?r.map(x=>x.pct+'% × '+rupees0(+x.amt)).join(', '):'none'; }catch(e){ return String(v); } }
   if(v==='yes') return 'on'; if(v==='no') return 'off';
-  if(typeof DEFAULTS[k]==='number' && /At$|Pb$|Above$|Below$|^open|Principal$|^noBelow$/.test(k)) return rupees0(+v);
+  if(typeof DEFAULTS[k]==='number' && /At$|Pb$|Above$|Below$|^open|Principal$|^noBelow$|^ltaTo$|^crLentPer$/.test(k)) return rupees0(+v);
   return String(v);
 }
 function changedFromDefaults(raw){
@@ -3158,7 +3340,8 @@ $('save-scenario').onclick=()=>{
     when:new Date().toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),
     weeks:LAST.week, runs:C.runs,
     exE:KF.exE, exAD:KF.exAD, behind:last.behind, people:KF.people,
-    earned:KF.earned, lost:KF.lost, cover:KF.cover, lendYr:KF.lendYr, lendYrNet:KF.lendYrNet, retBase:'in',
+    earned:KF.earned, lost:KF.lost, cover:KF.cover, lendYr:KF.lendYr, lendYrNet:KF.lendYrNet, retBase:'in2',
+    coverExit:KF.coverExit, lendYrExit:KF.lendYrExit,
     resOn:C.resOn, resPeak:KF.resPeak,
     loans:LAST.weekly.reduce((s,r)=>s+r.made,0), noLender:noLenderPct,
     inelig:LAST.weekly.reduce((s,r)=>s+r.blocked,0)
@@ -3181,7 +3364,9 @@ function drawCompare(){
     ['Interest earned', s=>has(s,'earned')?rupees0(s.earned):rupees0(s.paid)],
     ['Principal missed or lost', s=>has(s,'lost')?rupees0(s.lost):(has(s,'wop')?rupees0(s.arrears+s.wop):dash)],
     ['Interest ÷ missed or lost', s=>has(s,'cover')?s.cover.toFixed(2)+'×':dash],
-    ['\u20B91 after a year, with / without CSR', s=>!has(s,'lendYr')?dash:(s.retBase==='in' ? '\u20B9'+(1+s.lendYr).toFixed(2)+' / \u20B9'+(1+s.lendYrNet).toFixed(2) : '<span class="hint">older method, not comparable</span>')],
+    ['Interest ÷ written off only (arrears not counted as lost)', s=>has(s,'coverExit')?s.coverExit.toFixed(2)+'×':dash],
+    ['\u20B91 after a year, with / without CSR', s=>!has(s,'lendYr')?dash:(s.retBase==='in2' ? '\u20B9'+(1+s.lendYr).toFixed(2)+' / \u20B9'+(1+s.lendYrNet).toFixed(2) : '<span class="hint">older method, not comparable</span>')],
+    ['₹1 after a year, without CSR, arrears not counted as lost', s=>has(s,'lendYrExit')?'₹'+(1+s.lendYrExit).toFixed(2):dash],
     ['CSR needed (most ever)', s=>has(s,'resPeak')&&s.resOn?rupees0(s.resPeak)+(has(s,'people')?'<span class="cmp-sub">'+rupees0(s.resPeak/s.people)+' per person</span>':''):dash],
     ['Loans made', s=>count(s.loans)],
     ['Requests with no lender', s=>has(s,'noLender')?s.noLender.toFixed(0)+'%':dash],
