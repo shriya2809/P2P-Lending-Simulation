@@ -759,7 +759,7 @@ const FORM = [
     {k:'irPeriod', l:'Quoted rate is', t:'select', opts:[['year','per year'],['month','per month'],['term','one charge for the whole loan']], h:'Per year makes interest tiny on a loan of a few weeks. This changes results more than any other setting.'},
     {k:'irMode', l:'Interest charged on', t:'select', opts:[['reducing','balance outstanding'],['flat','original loan amount']], h:'Balance outstanding shrinks as the loan is repaid, so interest falls week by week. Original amount does not.'}
   ]},
-  { title:'CSR reserve', note:'Measures how much CSR money a reserve would need, without changing anything in the simulation: lenders are paid only what borrowers actually pay. The measurement assumes that, whenever a borrower misses an instalment, the reserve would pay the lender the principal still unpaid divided by the instalments left in the loan\u2019s term, with no interest, counting everything the borrower has paid so far, interest included, as paying off principal and leaving out what the reserve already has out on the loan; and that it would keep paying the same way each week after a borrower exits, until the term would have ended. So it never has out on a loan more than the loan amount less everything the borrower has paid on it: on a ₹2,000 loan where ₹1,200 was paid before the default, it pays at most ₹800, so the lender gets back what they lent. Whatever the borrower later pays toward that default or exit balance goes to the lender’s interest first; the principal then repays the reserve until it has back what it paid, and anything after that goes to the lender. Most ever required is the size the reserve would have needed so it never ran dry.', fields:[
+  { title:'CSR reserve', note:'Measures how much CSR money a reserve would need, without changing anything in the simulation: lenders are paid only what borrowers actually pay. The measurement assumes that, whenever a borrower misses an instalment, the reserve would pay the lender the principal still unpaid divided by the instalments left in the loan\u2019s term, with no interest, counting everything the borrower has paid so far, interest included, as paying off principal and leaving out what the reserve already has out on the loan; and that it would keep paying the same way each week after a borrower exits, until the term would have ended. So it never has out on a loan more than the loan amount less everything the borrower has paid on it: on a ₹2,000 loan where ₹1,200 was paid before the default, it pays at most ₹800, so the lender gets back what they lent. Whatever the borrower later pays toward that default goes to the reserve first, until it has back what it paid plus the default interest on the part of the default it covered; anything after that goes to the lender. When an exit balance is repaid in one go, the reserve likewise has back what it paid, plus its share of the default interest in the balance. Most ever required is the size the reserve would have needed so it never ran dry.', fields:[
     {k:'resOn', l:'Measure the CSR reserve needed', t:'select', opts:[['yes','On'],['no','Off']], h:'Measurement only: switching it off just hides the CSR reserve cards. Results are the same either way.'}
   ]}
 ];
@@ -1037,7 +1037,7 @@ function netSheet(p){
 }
 
 /* ================= the engine ================= */
-const ACC=['resExitCover','resPaidWeek','resBackWeek','yieldWeek','resPaid','resBack','resN','yieldCum','resOut','resPeak','resInExit','resInDefault','woPUnpaid','penaltyWeek','made','madeValue','blocked','blockedCR','blockedCap','blockedCeil','blockedNO','blockedWO','waited','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind','arrearsP','defaultOwed','penaltyCum','netTotal','writtenOff','writtenOffP','writtenOffLoans','woWeek','savedWeek','savedCum','barred','exitedN','exitedOwed','exitedEver','exitedP','blockedEX','frozenN','frozenP','cantEX','cantFR','cantCR','cantNO','cantCAP','cantAMT','ltaTotal','ltaIntCum','ltaInCum','ltaOutCum','ltaWdN','ltaExitN','ltaExitOut'];
+const ACC=['resPen','resPenWeek','resExitCover','resPaidWeek','resBackWeek','yieldWeek','resPaid','resBack','resN','yieldCum','resOut','resPeak','resInExit','resInDefault','woPUnpaid','penaltyWeek','made','madeValue','blocked','blockedCR','blockedCap','blockedCeil','blockedNO','blockedWO','waited','unfunded','unfundedValue','cumPaid','cumEarned','outstanding','behind','arrearsP','defaultOwed','penaltyCum','netTotal','writtenOff','writtenOffP','writtenOffLoans','woWeek','savedWeek','savedCum','barred','exitedN','exitedOwed','exitedEver','exitedP','blockedEX','frozenN','frozenP','cantEX','cantFR','cantCR','cantNO','cantCAP','cantAMT','ltaTotal','ltaIntCum','ltaInCum','ltaOutCum','ltaWdN','ltaExitN','ltaExitOut'];
 const BYF=['pb','cr','def','lock','ip','ie','la','wop','nb','dout','no','wol','spells','wkdef','exited','exOwed','lta','ltaInt','n'];
 const newBy=()=>{const o={}; BYF.forEach(f=>o[f]=0); return o;};
 
@@ -1066,10 +1066,10 @@ function createRun(C, seed, keepDetail){
   /* THE CSR RESERVE, MEASURED ONLY. It never moves any money: lenders are paid only what borrowers
      actually pay. It records what such a reserve WOULD have paid lenders (for each missed instalment,
      and each week after an exit, the unpaid principal spread over the weeks left in the term, never more
-     in all than the loan amount less what the borrower has paid on it) and what it would have had back out of the
-     principal borrowers later pay (interest goes to the lender first), so the results can show how
+     in all than the loan amount less what the borrower has paid on it) and what it would have had back out of what
+     borrowers later pay (the reserve is repaid first, with default interest on what it covered), so the results can show how
      much CSR money it would need. Nothing else in the simulation depends on it. */
-  S.res = { shadow:C.resOn, paidOut:0, paidN:0, back:0, peak:0, yieldCum:0, exitCover:0 };
+  S.res = { shadow:C.resOn, paidOut:0, paidN:0, back:0, peak:0, yieldCum:0, exitCover:0, penEarned:0 };
   return S;
 }
 
@@ -1117,7 +1117,7 @@ function stepWeek(S){
   }
   const LOGCAP = 200000;
   const RES = S.res;
-  let resPaidWeek = 0, resBackWeek = 0, yieldWeek = 0;
+  let resPaidWeek = 0, resBackWeek = 0, yieldWeek = 0, resPenWeek = 0;
   /* structured log entries {w, txt, kind, amt?, before?, bal?} */
   const note = S.keepDetail
     ? (p,txt,x)=>{ if(p.log.length<LOGCAP) p.log.push(Object.assign({w,txt,kind:'info'},x||{})); }
@@ -1230,6 +1230,8 @@ function stepWeek(S){
     L.penSpell=r2((L.penSpell||0)+pen); L.spellWeeks=(L.spellWeeks||0)+1;
     idx[L.bId].penCharged=r2(idx[L.bId].penCharged+pen); idx[L.lId].penAccrued=r2(idx[L.lId].penAccrued+pen);
     idx[L.bId].penWeekCharged=r2(idx[L.bId].penWeekCharged+pen); idx[L.lId].penWeekAccrued=r2(idx[L.lId].penWeekAccrued+pen);
+    /* CSR reserve (measured only): the part of the default it has covered earns default interest for the reserve */
+    if(RES.shadow){ const R=r2((L.shOwed||0)+(L.shPen||0)); if(R>EPS){ const sp=r2(Math.min(pen, R*rate/100)); if(sp>EPS) L.shPen=r2((L.shPen||0)+sp); } }
     L.def0=r2(L.arrP+L.arrI);
     idx[L.bId].def0+=L.def0;
     if(S.keepDetail){
@@ -1365,12 +1367,14 @@ function stepWeek(S){
       const lParts = splitTxt([[payPen,'default interest'],[r2(payI-payPen),'missed interest'],[payP,'principal']]);
       const payParts = lParts;
       L.bPaid=r2((L.bPaid||0)+pay);
-      /* CSR reserve (measured only): the interest in this payment goes to the lender first; the
-         principal repays the reserve until it has back what it put out on this loan */
+      /* CSR reserve (measured only): this payment repays the reserve first, what it put out on this
+         loan and then the default interest on it; anything after that goes to the lender */
       if(RES.shadow && (L.shPaid||0)>EPS){
-        const sr=r2(Math.min(payP, L.shOwed||0));
+        const sr=r2(Math.min(pay, L.shOwed||0));
         if(sr>EPS){ L.shOwed=r2(L.shOwed-sr); RES.back=r2(RES.back+sr); resBackWeek=r2(resBackWeek+sr); }
-        const y=r2(pay-sr); if(y>EPS){ RES.yieldCum=r2(RES.yieldCum+y); yieldWeek=r2(yieldWeek+y); }
+        const sp=r2(Math.min(r2(pay-sr), L.shPen||0));
+        if(sp>EPS){ L.shPen=r2(L.shPen-sp); RES.penEarned=r2(RES.penEarned+sp); resPenWeek=r2(resPenWeek+sp); }
+        const y=r2(pay-sr-sp); if(y>EPS){ RES.yieldCum=r2(RES.yieldCum+y); yieldWeek=r2(yieldWeek+y); }
       }
       move(p, -pay, lead+loanTag(L)+' to '+l.name+', '+rs2(pay)+payParts+'.'+
         (full ? ' In default since week '+spellFrom+' ('+plural(spellWks,'week')+'); it cost '+rs2(spellCost)+' in default interest.'
@@ -1486,9 +1490,11 @@ function stepWeek(S){
       const spellCost=L.penSpell||0, spellWks=L.spellWeeks||0, spellFrom=L.spellStart, back=L.arrN;
       L.bPaid=r2((L.bPaid||0)+owed);
       if(RES.shadow && (L.shPaid||0)>EPS){
-        const sr=r2(Math.min(payP, L.shOwed||0));   /* interest to the lender first, principal repays the reserve */
+        const sr=r2(Math.min(owed, L.shOwed||0));   /* the reserve first, then its default interest, then the lender */
         if(sr>EPS){ L.shOwed=r2(L.shOwed-sr); RES.back=r2(RES.back+sr); resBackWeek=r2(resBackWeek+sr); }
-        const y=r2(owed-sr); if(y>EPS){ RES.yieldCum=r2(RES.yieldCum+y); yieldWeek=r2(yieldWeek+y); }
+        const sp=r2(Math.min(r2(owed-sr), L.shPen||0));
+        if(sp>EPS){ L.shPen=r2(L.shPen-sp); RES.penEarned=r2(RES.penEarned+sp); resPenWeek=r2(resPenWeek+sp); }
+        const y=r2(owed-sr-sp); if(y>EPS){ RES.yieldCum=r2(RES.yieldCum+y); yieldWeek=r2(yieldWeek+y); }
       }
       L.penPaid=r2((L.penPaid||0)+payPen); L.outstanding=r2(L.outstanding-payP); L.paidP=r2((L.paidP||0)+payP);
       L.arrP=0; L.arrI=0; L.arrPen=0; L.arrN=0; L.penSpell=0; L.spellWeeks=0; L.spellStart=undefined;
@@ -1762,6 +1768,7 @@ function stepWeek(S){
       p.exitAge=(p.exitAge||0)+1;
       const rate=defRateFor(p.exitAge,C); let add=0;
       for(const d of p.exitDebts){ const inc=r2((d.p+d.x)*rate/100); d.x=r2(d.x+inc); add=r2(add+inc);
+        if(RES.shadow){ const R=r2((d.shRp||0)+(d.shCov||0)+(d.shPen||0)); const sp=r2(Math.min(inc, R*rate/100)); if(sp>EPS) d.shPen=r2((d.shPen||0)+sp); }
         idx[d.lId].penAccrued=r2(idx[d.lId].penAccrued+inc); }
       p.penCharged=r2(p.penCharged+add); S.penaltyCum+=add; p.exitBal=r2(p.exitBal+add);
       if(S.keepDetail && add>EPS) note(p,'Default interest on the exit balance: '+rs2(add)+' ('+rate.toFixed(2)+'%). Exit balance now '+rs2(p.exitBal)+'.',{kind:'penalty'});
@@ -1787,7 +1794,8 @@ function stepWeek(S){
     if(p.exited && Math.max(0,p.pb) + (p.lta||0) - owedNowToReturn >= -1e-9){
       let pbLeft = r2(Math.min(Math.max(0,p.pb), owedNowToReturn)), ltaUsed = 0;
       for(const d of (p.exitDebts||[])){
-        if(RES.shadow){ const sb=r2((d.shRp||0)+(d.shCov||0)); if(sb>EPS){ RES.back=r2(RES.back+sb); resBackWeek=r2(resBackWeek+sb); } }
+        if(RES.shadow){ const sb=r2((d.shRp||0)+(d.shCov||0)); if(sb>EPS){ RES.back=r2(RES.back+sb); resBackWeek=r2(resBackWeek+sb); }
+          const spn=r2(Math.min(d.shPen||0, d.x)); if(spn>EPS){ RES.penEarned=r2(RES.penEarned+spn); resPenWeek=r2(resPenWeek+spn); } }
         const amt=r2(d.p+d.x); if(amt<=EPS) continue; const l=idx[d.lId];
         const fromPb=r2(Math.min(amt, pbLeft)), fromLta=r2(amt-fromPb); pbLeft=r2(pbLeft-fromPb);
         const what='Repaid the exit balance owed to '+l.name+' on '+loanTag(d.L)+': '+rs2(amt)+splitTxt([[d.p,'principal'],[d.x,'interest']]);
@@ -1822,8 +1830,8 @@ function stepWeek(S){
         const dp = r2(L.outstanding), dx = C.exitOwe==='principal' ? 0 : r2(L.arrI + remIntSched(L));
         /* weeksLeft: instalments not yet due when the loan closed; the measured CSR reserve would keep
            paying the lender loan amount / weeks on each of them, as if each were missed */
-        p.exitDebts.push({L, lId:L.lId, p:dp, x:dx, weeksLeft:(dp>EPS ? Math.max(1,L.schedLeft) : Math.max(0,L.schedLeft)), shRp:r2(L.shOwed||0), shCov:0, capP:coverCap(L)}); p.exitBal = r2(p.exitBal + dp + dx);
-        L.shOwed = 0;
+        p.exitDebts.push({L, lId:L.lId, p:dp, x:dx, weeksLeft:(dp>EPS ? Math.max(1,L.schedLeft) : Math.max(0,L.schedLeft)), shRp:r2(L.shOwed||0), shPen:r2(L.shPen||0), shCov:0, capP:coverCap(L)}); p.exitBal = r2(p.exitBal + dp + dx);
+        L.shOwed = 0; L.shPen = 0;
         L.open=false; L.closedByExit=true; L.outstanding=0; L.arrP=0; L.arrI=0; L.arrPen=0; L.schedLeft=0;
         note(l,'Closed and wrote off '+loanTag(L)+' to '+p.name+', who has exited the scheme. They owe you '+rs2(dp+dx)+splitTxt([[dp,'principal'],[dx,'interest']])+', to be repaid in one go before they can come back.', {kind:'writeoff'});
       }
@@ -1857,7 +1865,7 @@ function stepWeek(S){
              exitedN:0, exitedOwed:0, exitedP:0, exitedEver:people.filter(p=>p.exits).length,
              cumPaid:S.cumPaid, cumEarned:S.cumEarned, outstanding:0, behind:0,
              arrearsP:0, woPUnpaid:0, defaultOwed:0, penaltyCum:S.penaltyCum, penaltyWeek:penWeekTotal, netTotal:0,
-             resPaidWeek, resBackWeek, yieldWeek, resPaid:RES.paidOut, resBack:RES.back, resN:RES.paidN, yieldCum:RES.yieldCum, resExitCover:RES.exitCover,
+             resPaidWeek, resBackWeek, yieldWeek, resPaid:RES.paidOut, resBack:RES.back, resPen:RES.penEarned, resPenWeek, resN:RES.paidN, yieldCum:RES.yieldCum, resExitCover:RES.exitCover,
              resOut:0, resPeak:0, resInExit:0, resInDefault:0,
              ltaTotal:0, ltaIntCum:S.ltaInt, ltaInCum:S.ltaIn, ltaOutCum:S.ltaOut, ltaWdN:S.ltaWdN, ltaExitN:S.ltaExitN||0, ltaExitOut:S.ltaExitOut||0, by:{}};
   /* CSR RESERVE REQUIRED: paid out and not yet repaid. The peak is the size it would have needed. */
@@ -2709,8 +2717,8 @@ function render(){
       ['CSR required per person', rupees0(last.resPeak/totalPeople), 'Most ever required \u00F7 '+asNumber(totalPeople)+' participants. Required now: '+rupees0(last.resOut/totalPeople)+' per person.'],
       ['Required from the reserve now', rupees0(last.resOut), rupees0(last.resInDefault)+' in loans still in default, '+rupees0(last.resInExit)+' in exit balances.'],
       ['Reserve would have paid out to date', rupees0(last.resPaid), count(last.resN)+' instalments covered, including weeks after a borrower exited. '+rupees0(last.resPaidWeek)+' this week.'],
-      ['Reserve would have had back to date', rupees0(last.resBack), (last.resPaid>0.5?Math.round(100*last.resBack/last.resPaid)+'% of what it paid out. ':'')+rupees0(last.resBackWeek)+' this week.'],
-      ['Recovery yield to lenders', rupees0(last.yieldCum), 'Paid to lenders when a covered borrower catches up. Interest and default interest go to the lender first; principal repays the reserve until it has back what it covered on that loan, and any principal after that goes to the lender. Nothing comes while the borrower stays in default or exited.'],
+      ['Reserve would have had back to date', rupees0(last.resBack), (last.resPaid>0.5?Math.round(100*last.resBack/last.resPaid)+'% of what it paid out. ':'')+rupees0(last.resBackWeek)+' this week. On top of that, it would have earned '+rupees0(last.resPen)+' of default interest on the money it covered ('+rupees0(last.resPenWeek)+' this week).'],
+      ['Recovery yield to lenders', rupees0(last.yieldCum), 'Paid to lenders when a covered borrower catches up. Each payment repays the reserve first, what it covered on that loan plus the default interest on it; anything after that goes to the lender. Nothing comes while the borrower stays in default or exited.'],
       ['Each \u20B91 lenders have in, after a year, with CSR cover', '\u20B91 \u2192 \u20B9'+(1+lendYr).toFixed(2),
         pct(100*lendYr)+' a year. (Interest earned '+rupees0(KF.earned)+' \u2212 '+rupees0(KF.absExit+KF.absArr)+' of interest that only made up principal the reserve does not cover) \u00F7 lenders\u2019 money in on an average week ('+rupees0(KF.avgInCover)+') \u00F7 '+KF.yrs.toFixed(2)+' years. The reserve never pays more on a loan than the loan amount less everything the borrower paid, interest included, so interest a covered borrower paid before defaulting can end up standing in for principal: '+rupees0(KF.absExit)+' on exit balances and '+rupees0(KF.absArr)+' on missed principal of loans still running. Money in here leaves out what the reserve would already have paid them.'],
       ['Each \u20B91 lenders have in, after a year, without cover', '\u20B91 \u2192 \u20B9'+(1+lendYrNet).toFixed(2),
